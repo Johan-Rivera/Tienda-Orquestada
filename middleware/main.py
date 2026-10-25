@@ -100,17 +100,8 @@ async def cargar_requerimientos_productos():
     "/registrarVenta",
     response_model=OrquestarVentaResponse,
     status_code=status.HTTP_200_OK,
-    summary="Orquestar venta a cliente y coordinar todo el flujo distribuido",
-    description="""
-    Inicia y coordina el flujo completo de venta distribuida:
-    
-    1. **Verificación de Inventario:** Verifica disponibilidad en tiempo real contra la Blockchain. Si no hay suficiente stock, aborta la transacción con código 400.
-    2. **Contrato Comercial:** Registra la orden de venta en Compras/Ventas con cálculo automático de IVA (19%).
-    3. **Facturación Fiscal:** Genera factura electrónica legal con código CUFE (SHA-256) en Contabilidad.
-    4. **Conciliación:** Vincula la factura a la orden mercantil en Compras/Ventas.
-    5. **Minado en Blockchain:** Mina un nuevo bloque PoW por cada artículo vendido en Inventario, reduciendo el stock de manera inmutable.
-    6. **Despacho Logístico:** Genera la guía de transporte en Transportador, asignando camión de carga y fecha de entrega.
-    """,
+    summary="Registrar venta a cliente y emitir factura electrónica",
+    description="Coordina el flujo distribuido de la venta (validación de stock en Blockchain, orden mercantil, facturación electrónica con CUFE, minado de existencias y logística), retornando la factura con los datos esenciales de la transacción y entrega para el cliente.",
     responses={
         400: {"description": "Stock insuficiente en Blockchain o producto no catalogado."},
         502: {"description": "Falla de comunicación con alguno de los microservicios participantes."},
@@ -126,16 +117,8 @@ async def registrar_venta(payload: RegistrarVentaRequest):
     "/registrarCompra",
     response_model=OrquestarCompraResponse,
     status_code=status.HTTP_200_OK,
-    summary="Orquestar compra a proveedor y aumentar stock en Blockchain",
-    description="""
-    Inicia y coordina el flujo completo de reabastecimiento con proveedores:
-    
-    1. **Validación de Catálogo:** Valida que los productos existan y concilia los costos base en Inventario.
-    2. **Orden Mercantil:** Registra la orden de compra en Compras/Ventas con los términos de crédito pactados.
-    3. **Facturación Contable:** Genera comprobante fiscal electrónico y CUFE de cuenta por pagar en Contabilidad.
-    4. **Conciliación:** Vincula la factura emitida a la orden mercantil en Compras/Ventas.
-    5. **Minado en Blockchain:** Mina un nuevo bloque PoW de tipo 'ADQUISICION' en Inventario, incrementando el saldo disponible de forma inmutable.
-    """,
+    summary="Registrar orden de abastecimiento y emitir comprobante de compra",
+    description="Coordina el flujo distribuido de reabastecimiento (validación de catálogo, orden de compra, facturación contable con CUFE y minado de ingreso en Blockchain), retornando el comprobante con los datos esenciales de la compra para el proveedor.",
     responses={
         400: {"description": "Producto no existente en catálogo o costo inválido."},
         502: {"description": "Falla de comunicación con los microservicios."},

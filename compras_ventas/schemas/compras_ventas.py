@@ -59,15 +59,31 @@ class RecibirFacturaRequest(BaseModel):
 
 
 class RegistrarVentaResponse(BaseModel):
-    status: str = Field("EXITOSO", description="Estado de la operación")
-    mensaje: str = Field(..., description="Mensaje informativo")
-    venta: Dict[str, Any] = Field(..., description="Registro mercantil completo de la venta")
+    id_venta: str = Field(..., description="Código de orden mercantil", json_schema_extra={"example": "VEN-20261025-A1B2C3"})
+    fecha: str = Field(..., description="Fecha de registro")
+    cliente: ClienteInfo = Field(..., description="Datos del cliente")
+    items: List[ItemVenta] = Field(..., description="Lista de muebles incluidos")
+    metodo_pago: Optional[str] = Field("TRANSFERENCIA", description="Modalidad de pago")
+    subtotal: float = Field(..., description="Subtotal antes de IVA")
+    iva: float = Field(..., description="IVA 19%")
+    total: float = Field(..., description="Total general liquidado")
+    estado: str = Field("REGISTRADA", description="Estado de la orden mercantil")
+    factura: Optional[Dict[str, Any]] = None
+    observaciones: Optional[str] = ""
 
 
 class RegistrarCompraResponse(BaseModel):
-    status: str = Field("EXITOSO", description="Estado de la operación")
-    mensaje: str = Field(..., description="Mensaje informativo")
-    compra: Dict[str, Any] = Field(..., description="Registro mercantil completo de la orden de compra")
+    id_compra: str = Field(..., description="Código de orden de compra", json_schema_extra={"example": "COM-20261025-D4E5F6"})
+    fecha: str = Field(..., description="Fecha de registro")
+    proveedor: ProveedorInfo = Field(..., description="Datos del proveedor")
+    items: List[ItemCompra] = Field(..., description="Artículos a reabastecer")
+    terminos_pago: Optional[str] = Field("CREDITO_30_DIAS", description="Condiciones de pago")
+    subtotal: float = Field(..., description="Subtotal antes de IVA")
+    iva: float = Field(..., description="IVA 19%")
+    total: float = Field(..., description="Total general liquidado")
+    estado: str = Field("REGISTRADA", description="Estado de la orden mercantil")
+    factura: Optional[Dict[str, Any]] = None
+    observaciones: Optional[str] = ""
 
 
 class RecibirFacturaResponse(BaseModel):

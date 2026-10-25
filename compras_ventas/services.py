@@ -38,12 +38,7 @@ class GestorComprasVentas:
         }
 
         self.ventas_db[id_venta] = registro
-
-        return {
-            "status": "EXITOSO",
-            "mensaje": "Venta registrada satisfactoriamente",
-            "venta": registro
-        }
+        return registro
 
     def registrar_compra(self, payload: RegistrarCompraRequest) -> Dict[str, Any]:
         if not payload.items:
@@ -69,12 +64,7 @@ class GestorComprasVentas:
         }
 
         self.compras_db[id_compra] = registro
-
-        return {
-            "status": "EXITOSO",
-            "mensaje": "Compra registrada satisfactoriamente",
-            "compra": registro
-        }
+        return registro
 
     def recibir_factura(self, payload: RecibirFacturaRequest) -> Dict[str, Any]:
         ref = payload.referencia_operacion

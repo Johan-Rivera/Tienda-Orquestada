@@ -1,0 +1,26 @@
+# 1. Ejecutar contenedor temporal para instalar las librerías
+docker run --name builder-alpine-fastapi --dns 8.8.8.8 alpine:latest sh -c "apk add --no-cache python3 py3-pip && pip install --no-cache-dir --break-system-packages fastapi uvicorn pydantic httpx
+
+# 2. Generar la imagen local con docker commit
+docker commit builder-alpine-fastapi alpine-fastapi:latest
+
+# 3. Remover el contenedor temporal de construcción
+docker rm builder-alpine-fastapi
+
+# 4. Crear red del sistema de tienda
+docker network create red-muebles
+
+# 1. Inventario con Blockchain (Puerto 8001)
+docker run -d --name inventario --network red-muebles -p 8001:8001 -v "${PWD}/inventario:/app" -w /app alpine-fastapi:latest uvicorn main:app --host 0.0.0.0 --port 8001
+
+# 2. Compras y Ventas (Puerto 8002)
+docker run -d --name compras-ventas --network red-muebles -p 8002:8002 -v "${PWD}/compras_ventas:/app" -w /app alpine-fastapi:latest uvicorn main:app --host 0.0.0.0 --port 8002
+
+# 3. Contabilidad y Facturación (Puerto 8003)
+docker run -d --name contabilidad --network red-muebles -p 8003:8003 -v "${PWD}/contabilidad:/app" -w /app alpine-fastapi:latest uvicorn main:app --host 0.0.0.0 --port 8003
+
+# 4. Transportador y Logística (Puerto 8004)
+docker run -d --name transportador --network red-muebles -p 8004:8004 -v "${PWD}/transportador:/app" -w /app alpine-fastapi:latest uvicorn main:app --host 0.0.0.0 --port 8004
+
+# 5. Middleware Orquestador Central (Puerto 8000)
+docker run -d --name middleware --network red-muebles -p 8000:8000 -v "${PWD}/middleware:/app" -w /app alpine-fastapi:latest uvicorn main:app --host 0.0.0.0 --port 8000

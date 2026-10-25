@@ -126,48 +126,56 @@ class RegistrarCompraRequest(BaseModel):
     )
 
 
-class BloqueMinadoResumen(BaseModel):
-    producto_id: str = Field(..., description="ID del producto")
-    cantidad: int = Field(..., description="Cantidad transaccionada")
-    stock_resultante: int = Field(..., description="Nuevo saldo en Blockchain")
-    bloque_hash: str = Field(..., description="Hash SHA-256 del bloque minado")
-    bloque_index: int = Field(..., description="Índice del bloque en la cadena")
+class DespachoInfo(BaseModel):
+    numero_guia: str = Field(..., description="Número de guía logística", json_schema_extra={"example": "GUIA-20261025-4987"})
+    transportadora: str = Field(..., description="Empresa transportadora asignada", json_schema_extra={"example": "Logística & Carga Móvil Express de Colombia S.A.S."})
+    vehiculo: str = Field(..., description="Vehículo asignado para el despacho", json_schema_extra={"example": "CAMION-02 (Plataforma Hidráulica)"})
+    fecha_estimada_entrega: str = Field(..., description="Fecha compromiso de entrega", json_schema_extra={"example": "2026-10-27"})
 
 
-class ResumenVentaOrquestada(BaseModel):
-    id_venta: str = Field(..., description="Código de orden mercantil", json_schema_extra={"example": "VEN-20261025-A1B2C3"})
-    cliente: str = Field(..., description="Nombre del comprador")
-    total_pagado: float = Field(..., description="Monto total liquidado (COP)", json_schema_extra={"example": 3117800.0})
-    numero_factura: str = Field(..., description="Consecutivo de Factura Electrónica", json_schema_extra={"example": "FE-VEN-1001"})
-    cufe: str = Field(..., description="Código Único de Factura Electrónica (SHA-256)", json_schema_extra={"example": "dafab70a662c..."})
-    numero_guia_transporte: str = Field(..., description="Número de guía logística", json_schema_extra={"example": "GUIA-20261025-4987"})
-    transportadora: str = Field(..., description="Empresa logística asignada")
-    vehiculo: str = Field(..., description="Camión asignado")
-    fecha_estimada_entrega: str = Field(..., description="Fecha compromiso de entrega")
-    bloques_blockchain: List[BloqueMinadoResumen] = Field(..., description="Bloques PoW minados que redujeron el stock")
+class ItemFactura(BaseModel):
+    producto_id: str = Field(..., description="Código del mueble", json_schema_extra={"example": "MUE-001"})
+    nombre: str = Field(..., description="Nombre comercial del mueble", json_schema_extra={"example": "Sofá Seccional Cuero 3 Puestos"})
+    cantidad: int = Field(..., description="Cantidad de unidades", json_schema_extra={"example": 2})
+    precio_unitario: float = Field(..., description="Precio unitario (COP)", json_schema_extra={"example": 1200000.0})
+    subtotal: float = Field(..., description="Subtotal liquidado (COP)", json_schema_extra={"example": 2400000.0})
 
 
-class OrquestarVentaResponse(BaseModel):
-    status: str = Field("EXITOSO", description="Estado del flujo orquestado")
-    mensaje: str = Field(..., description="Mensaje general")
-    id_proceso: str = Field(..., description="Identificador único del proceso orquestado", json_schema_extra={"example": "ORQ-VEN-20261025143000"})
-    resumen: ResumenVentaOrquestada = Field(..., description="Resumen consolidado para el cliente y desarrolladores")
-    detalles_completos: Dict[str, Any] = Field(..., description="Detalles completos de cada paso (venta, factura, transporte)")
+class FacturaVentaResponse(BaseModel):
+    id_venta: str = Field(..., description="Código de orden mercantil de venta", json_schema_extra={"example": "VEN-20261025-A1B2C3"})
+    numero_factura: str = Field(..., description="Consecutivo de Factura Electrónica legal", json_schema_extra={"example": "FE-VEN-1001"})
+    cufe: str = Field(..., description="Código Único de Factura Electrónica emitido con SHA-256", json_schema_extra={"example": "dafab70a662c7879..."})
+    fecha_emision: str = Field(..., description="Fecha y hora de expedición fiscal", json_schema_extra={"example": "2026-10-25T14:30:00"})
+    cliente: ClienteSolicitud = Field(..., description="Datos del comprador")
+    items: List[ItemFactura] = Field(..., description="Lista de muebles adquiridos")
+    subtotal: float = Field(..., description="Base gravable antes de impuestos (COP)", json_schema_extra={"example": 2620000.0})
+    iva: float = Field(..., description="Impuesto al Valor Agregado (19%) (COP)", json_schema_extra={"example": 497800.0})
+    total: float = Field(..., description="Total general pagado (COP)", json_schema_extra={"example": 3117800.0})
+    metodo_pago: str = Field(..., description="Medio de pago seleccionado", json_schema_extra={"example": "TRANSFERENCIA_PSE"})
+    despacho: DespachoInfo = Field(..., description="Información de despacho y entrega a domicilio")
 
 
-class ResumenCompraOrquestada(BaseModel):
+class ItemFacturaCompra(BaseModel):
+    producto_id: str = Field(..., description="Código del producto", json_schema_extra={"example": "MUE-001"})
+    nombre: str = Field(..., description="Nombre comercial del mueble", json_schema_extra={"example": "Sofá Seccional Cuero 3 Puestos"})
+    cantidad: int = Field(..., description="Cantidad adquirida", json_schema_extra={"example": 5})
+    costo_unitario: float = Field(..., description="Costo unitario acordado (COP)", json_schema_extra={"example": 750000.0})
+    subtotal: float = Field(..., description="Subtotal liquidado (COP)", json_schema_extra={"example": 3750000.0})
+
+
+class FacturaCompraResponse(BaseModel):
     id_compra: str = Field(..., description="Código de orden de compra", json_schema_extra={"example": "COM-20261025-D4E5F6"})
-    proveedor: str = Field(..., description="Nombre del proveedor")
-    total_compra: float = Field(..., description="Monto total liquidado (COP)", json_schema_extra={"example": 7318500.0})
-    numero_factura: str = Field(..., description="Consecutivo de Factura / Cuenta por pagar", json_schema_extra={"example": "FE-COM-5001"})
-    cufe: str = Field(..., description="Código CUFE emitido", json_schema_extra={"example": "6741944a6f05..."})
-    terminos_pago: str = Field(..., description="Condición de pago")
-    bloques_blockchain: List[BloqueMinadoResumen] = Field(..., description="Bloques PoW minados que incrementaron el stock")
+    numero_factura: str = Field(..., description="Consecutivo fiscal / Cuenta por pagar", json_schema_extra={"example": "FE-COM-5001"})
+    cufe: str = Field(..., description="Código CUFE emitido con SHA-256", json_schema_extra={"example": "6741944a6f05..."})
+    fecha_emision: str = Field(..., description="Fecha y hora de emisión", json_schema_extra={"example": "2026-10-25T14:30:00"})
+    proveedor: ProveedorSolicitud = Field(..., description="Datos del proveedor que suministra")
+    items: List[ItemFacturaCompra] = Field(..., description="Lista de productos abastecidos")
+    subtotal: float = Field(..., description="Subtotal antes de IVA (COP)", json_schema_extra={"example": 6150000.0})
+    iva: float = Field(..., description="IVA liquidado (19%) (COP)", json_schema_extra={"example": 1168500.0})
+    total: float = Field(..., description="Total general liquidado (COP)", json_schema_extra={"example": 7318500.0})
+    terminos_pago: str = Field(..., description="Condición y plazo de pago", json_schema_extra={"example": "CREDITO_45_DIAS"})
 
 
-class OrquestarCompraResponse(BaseModel):
-    status: str = Field("EXITOSO", description="Estado del flujo orquestado")
-    mensaje: str = Field(..., description="Mensaje general")
-    id_proceso: str = Field(..., description="Identificador único del proceso orquestado", json_schema_extra={"example": "ORQ-COM-20261025143000"})
-    resumen: ResumenCompraOrquestada = Field(..., description="Resumen consolidado para el proveedor y desarrolladores")
-    detalles_completos: Dict[str, Any] = Field(..., description="Detalles completos de cada paso (compra, factura, blockchain)")
+# Alias para retrocompatibilidad
+OrquestarVentaResponse = FacturaVentaResponse
+OrquestarCompraResponse = FacturaCompraResponse

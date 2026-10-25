@@ -90,8 +90,8 @@ A continuación se especifican los contratos REST de cada componente:
 
 | Componente | Método HTTP | Endpoint | Parámetros (Request Body / Entrada) | Objeto de Retorno (Response Body) | Códigos HTTP |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Middleware** | `POST` | `/registrarVenta` | **Body:** `RegistrarVentaRequest` (`cliente`, `items`, `metodo_pago`) | `OrquestarVentaResponse` (resumen con `id_venta`, `numero_factura`, `cufe`, `numero_guia_transporte`, `bloques_blockchain`) | 200, 400, 502, 503 |
-| **Middleware** | `POST` | `/registrarCompra` | **Body:** `RegistrarCompraRequest` (`proveedor`, `items`, `terminos_pago`) | `OrquestarCompraResponse` (resumen con `id_compra`, `numero_factura`, `cufe`, `bloques_blockchain`) | 200, 400, 502, 503 |
+| **Middleware** | `POST` | `/registrarVenta` | **Body:** `RegistrarVentaRequest` (`cliente`, `items`, `metodo_pago`) | `FacturaVentaResponse` (`id_venta`, `numero_factura`, `cufe`, `fecha_emision`, `cliente`, `items`, `subtotal`, `iva`, `total`, `metodo_pago`, `despacho`) | 200, 400, 502, 503 |
+| **Middleware** | `POST` | `/registrarCompra` | **Body:** `RegistrarCompraRequest` (`proveedor`, `items`, `terminos_pago`) | `FacturaCompraResponse` (`id_compra`, `numero_factura`, `cufe`, `fecha_emision`, `proveedor`, `items`, `subtotal`, `iva`, `total`, `terminos_pago`) | 200, 400, 502, 503 |
 | **Middleware** | `GET` | `/cargarProductos` | Ninguno | `{"status": "EXITOSO", "total_productos": int, "productos": [...]}` | 200, 503 |
 | **Middleware** | `GET` | `/cargarRequerimientosProductos` | Ninguno | `{"status": "EXITOSO", "total_requerimientos": int, "requerimientos": [...]}` | 200, 503 |
 | **Inventario** | `GET` | `/cargarProductos` | Ninguno | `CargarProductosResponse` (`total_productos`, `productos` con stock calculado en Blockchain) | 200 |

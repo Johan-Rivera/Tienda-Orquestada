@@ -5,10 +5,12 @@ from .middleware import (
     ItemSolicitudCompra,
     ProveedorSolicitud,
     RegistrarCompraRequest,
-    BloqueMinadoResumen,
-    ResumenVentaOrquestada,
+    DespachoInfo,
+    ItemFactura,
+    FacturaVentaResponse,
+    ItemFacturaCompra,
+    FacturaCompraResponse,
     OrquestarVentaResponse,
-    ResumenCompraOrquestada,
     OrquestarCompraResponse
 )
 
@@ -19,9 +21,11 @@ __all__ = [
     "ItemSolicitudCompra",
     "ProveedorSolicitud",
     "RegistrarCompraRequest",
-    "BloqueMinadoResumen",
-    "ResumenVentaOrquestada",
+    "DespachoInfo",
+    "ItemFactura",
+    "FacturaVentaResponse",
+    "ItemFacturaCompra",
+    "FacturaCompraResponse",
     "OrquestarVentaResponse",
-    "ResumenCompraOrquestada",
     "OrquestarCompraResponse"
 ]
