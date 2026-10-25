@@ -67,23 +67,6 @@ class RecibirFacturaRequest(BaseModel):
     total_facturado: float
 
 
-@app.get("/")
-def estado():
-    return {
-        "servicio": "Compras y Ventas",
-        "estado": "ACTIVO",
-        "total_ventas": len(ventas_db),
-        "total_compras": len(compras_db),
-        "metodos_disponibles": [
-            "POST /registrarVenta",
-            "POST /registrarCompra",
-            "POST /recibirFactura",
-            "GET /ventas",
-            "GET /compras"
-        ]
-    }
-
-
 @app.post("/registrarVenta")
 def registrar_venta(payload: RegistrarVentaRequest):
     """
@@ -207,23 +190,9 @@ def listar_ventas():
     }
 
 
-@app.get("/ventas/{id_venta}")
-def consultar_venta(id_venta: str):
-    if id_venta not in ventas_db:
-        raise HTTPException(status_code=404, detail="Venta no encontrada.")
-    return ventas_db[id_venta]
-
-
 @app.get("/compras")
 def listar_compras():
     return {
         "total": len(compras_db),
         "compras": list(compras_db.values())
     }
-
-
-@app.get("/compras/{id_compra}")
-def consultar_compra(id_compra: str):
-    if id_compra not in compras_db:
-        raise HTTPException(status_code=404, detail="Compra no encontrada.")
-    return compras_db[id_compra]

@@ -9,25 +9,25 @@
 
 ## 1. Resumen Ejecutivo y Transformación de Arquitectura
 
-El presente proyecto implementa un **sistema de software distribuido** para una tienda de muebles, donde el componente neurálgico es un **Middleware Orquestador** encargado de coordinar de forma centralizada todas las transacciones de **Venta a Clientes** y de **Compra / Abastecimiento a Proveedores**.
+El presente proyecto implementa un **sistema de software distribuido** para una tienda de muebles, donde el componente principal es un **Middleware Orquestador** que asume directamente la fachada de cara a clientes y proveedores para coordinar de forma centralizada todas las transacciones de **Venta a Clientes** y de **Compra / Abastecimiento a Proveedores**.
 
 ### 1.1. Arquitectura Original (Coordinada / Coreografiada) vs. Arquitectura Transformada (Orquestada con Middleware)
 
 * **Arquitectura Original (Esquema del PDF - Coreografía/Coordinación P2P):**  
   En el diseño inicial, los componentes interactuaban entre sí de manera descentralizada y punto a punto:
-  - El `Cliente` interactuaba con la `Tienda`. La `Tienda` debía invocar directamente a `Inventario.cargarProductos()`, llamar a `Compras/Ventas.registrarVenta()` y luego ordenar el despacho a `Transportador.ordenarTransporte()`.
-  - A su vez, `Compras/Ventas` debía invocar a `Contabilidad.generarFactura()` y recibir la confirmación `recibirFactura()`.
-  - El `Proveedor` interactuaba con `AtenciónProveedores`, que a su vez debía consultar directamente `Inventario.cargarRequerimientosProductos()` y llamar a `Compras/Ventas.registrarCompra()`.
+  - El `Cliente` interactuaba con `Tienda`, la cual invocaba directamente a `Inventario.cargarProductos()`, `Compras/Ventas.registrarVenta()` y `Transportador.ordenarTransporte()`.
+  - `Compras/Ventas` debía invocar a `Contabilidad.generarFactura()` y recibir la confirmación `recibirFactura()`.
+  - El `Proveedor` interactuaba con `AtenciónProveedores`, que a su vez consultaba `Inventario.cargarRequerimientosProductos()` y llamaba a `Compras/Ventas.registrarCompra()`.
   
   **Desventajas del esquema original:**
   1. *Fuerte acoplamiento:* Cada microservicio debía conocer las URLs, contratos y estados internos de los demás.
   2. *Manejo de fallos complejo:* Si fallaba la facturación o el transporte, revertir la venta o el inventario requería compensaciones distribuidas en cascada difíciles de auditar.
-  3. *Lógica de negocio dispersa:* Las reglas de validación de crédito, stock mínimo y control tributario estaban fragmentadas en la interfaz de la tienda y la interfaz de proveedores.
+  3. *Lógica dispersa:* Las reglas de validación de existencias y facturación estaban repartidas entre múltiples capas.
 
-* **Arquitectura Transformada (Orquestación con Middleware):**  
-  Se transformó el sistema incorporando un **Middleware Orquestador Central**, el cual asume el rol de director de orquesta:
-  - La `Tienda` y el portal de `Atención a Proveedores` delegan toda la lógica transaccional al **Middleware**.
-  - El **Middleware** ejecuta las secuencias de negocio completas, valida precondiciones (como la existencia y stock en Blockchain), coordina en orden estricto las invocaciones REST hacia los servicios de dominio (`Inventario`, `Compras/Ventas`, `Contabilidad`, `Transportador`), consolida los resultados y provee trazabilidad y bitácora unificada de cada proceso.
+* **Arquitectura Transformada (Orquestación Directa con Middleware):**  
+  Se integraron las funciones cliente/proveedor dentro del **Middleware Orquestador Central**, eliminando capas redundantes:
+  - El **Middleware** expone directamente los 4 métodos del negocio: `POST /registrarVenta`, `POST /registrarCompra`, `GET /cargarProductos` y `GET /cargarRequerimientosProductos`.
+  - Coordina en orden estricto las invocaciones REST hacia los servicios de dominio (`Inventario`, `Compras/Ventas`, `Contabilidad`, `Transportador`), validando existencias contra la Blockchain, generando facturación electrónica con CUFE y programando el despacho logístico.
 
 ```
 +-----------------------------------------------------------------------------------------+
@@ -35,19 +35,14 @@ El presente proyecto implementa un **sistema de software distribuido** para una 
 +-----------------------------------------------------------------------------------------+
 |                                                                                         |
 |       [ Cliente ]                                      [ Proveedor ]                    |
-|            |                                                 |                          |
-|            v                                                 v                          |
-|     +--------------+                                 +------------------------+         |
-|     |    Tienda    |                                 |  AtenciónProveedores   |         |
-|     | (Puerto 8005)|                                 |      (Puerto 8006)     |         |
-|     +-------+------+                                 +-----------+------------+         |
-|             \                                                   /                       |
-|              \                     POST /orquestar/compra      /                        |
-|   POST        \                  GET /orquestar/requerimientos/                         |
-|   /orquestar/  \                                             /                          |
-|   venta         v                                           v                           |
-|             +====================================================+                      |
-|             |             MIDDLEWARE ORQUESTADOR                 |                      |
+|            \                                                 /                          |
+|   POST      \                                               /  POST                     |
+|   /registrar \                                             /   /registrar               |
+|   Venta       \                                           /    Compra                   |
+|   GET          \                                         /     GET                      |
+|   /cargar       v                                       v      /cargar                  |
+|   Productos +====================================================+ Requerimientos       |
+|             |             MIDDLEWARE ORQUESTADOR                 | Productos            |
 |             |                  (Puerto 8000)                     |                      |
 |             +====================================================+                      |
 |                      |             |             |            |                         |
@@ -64,28 +59,28 @@ El presente proyecto implementa un **sistema de software distribuido** para una 
 
 ---
 
-## 2. Mapeo de Flujos de Negocio
+## 2. Mapeo de Flujos de Negocio en el Middleware
 
-### 2.1. Flujo Orquestado de Venta a Clientes (`POST /orquestar/venta`)
+### 2.1. Flujo Orquestado de Venta a Clientes (`POST /registrarVenta`)
 
-1. **Recepción:** El cliente solicita la compra de muebles desde la `Tienda` (o directamente al Middleware).
+1. **Recepción:** El cliente invoca `POST /registrarVenta` en el Middleware enviando sus datos de contacto, los productos requeridos y el método de pago.
 2. **Paso 1 (Inventario - Blockchain):** El Middleware invoca `GET /cargarProductos` en el servicio de Inventario. Verifica la disponibilidad de existencias calculadas criptográficamente. Si el stock es insuficiente, se interrumpe la orquestación y se retorna error controlado (HTTP 400).
 3. **Paso 2 (Compras/Ventas):** El Middleware invoca `POST /registrarVenta`, registrando la orden comercial con los precios unitarios, subtotal, IVA (19%) y total general. Se asigna un identificador `id_venta`.
 4. **Paso 3 (Contabilidad):** El Middleware invoca `POST /generarFactura`, generando la Factura Electrónica legal con número consecutivo oficial y el cálculo del CUFE (Código Único de Factura Electrónica) mediante hash criptográfico SHA-256.
 5. **Paso 4 (Compras/Ventas):** El Middleware invoca `POST /recibirFactura`, asociando el número de factura y CUFE a la orden comercial de venta y marcándola como `FACTURADA`.
 6. **Paso 5 (Inventario - Blockchain):** Por cada producto vendido, el Middleware invoca `POST /actualizarInventario` con tipo `VENTA`. El servicio de Inventario ejecuta el algoritmo de consenso PoW (Proof of Work), mina un nuevo bloque inmutable en la cadena y descuenta el stock.
 7. **Paso 6 (Transportador):** El Middleware invoca `POST /ordenarTransporte`, asignando transportadora, vehículo (camión), ruta y emitiendo el número de guía de despacho logístico con fecha estimada de entrega.
-8. **Paso 7 (Consolidación y Auditoría):** El Middleware registra la bitácora completa en su almacén de trazabilidad y entrega al cliente la respuesta consolidada con factura, guía y hashes de la Blockchain.
+8. **Paso 7 (Consolidación):** El Middleware entrega la respuesta consolidada con factura, guía y hashes de la Blockchain.
 
-### 2.2. Flujo Orquestado de Compra a Proveedores (`POST /orquestar/compra`)
+### 2.2. Flujo Orquestado de Compra a Proveedores (`POST /registrarCompra`)
 
-1. **Recepción:** El proveedor o el área de compras inicia un pedido de abastecimiento desde `Atención a Proveedores`.
+1. **Recepción:** El proveedor o el área de compras inicia un pedido de abastecimiento mediante `POST /registrarCompra` en el Middleware.
 2. **Paso 1 (Inventario):** El Middleware verifica los ítems contra el catálogo de productos y costos autorizados.
 3. **Paso 2 (Compras/Ventas):** El Middleware invoca `POST /registrarCompra`, generando la orden de compra mercantil (`id_compra`) con los términos de pago pactados.
 4. **Paso 3 (Contabilidad):** El Middleware invoca `POST /generarFactura` con tipo `COMPRA`, registrando la cuenta por pagar fiscal y emitiendo factura con CUFE.
 5. **Paso 4 (Compras/Ventas):** El Middleware invoca `POST /recibirFactura` vinculando la factura contable a la compra mercantil.
 6. **Paso 5 (Inventario - Blockchain):** Por cada producto ingresado, el Middleware invoca `POST /actualizarInventario` con tipo `ADQUISICION`. Se mina un nuevo bloque en la Blockchain aumentando las existencias de forma inmutable.
-7. **Paso 6 (Consolidación):** El Middleware registra la trazabilidad del reabastecimiento y entrega la confirmación al proveedor.
+7. **Paso 6 (Consolidación):** El Middleware retorna la confirmación completa del reabastecimiento.
 
 ---
 
@@ -93,8 +88,12 @@ El presente proyecto implementa un **sistema de software distribuido** para una 
 
 A continuación se especifican los contratos REST de cada componente:
 
-| Componente | Método HTTP | Endpoint | Parámetros de Entrada (Request Body / Query) | Objeto de Retorno (Response Body) | Códigos HTTP |
+| Componente | Método HTTP | Endpoint | Parámetros de Entrada (Request Body) | Objeto de Retorno (Response Body) | Códigos HTTP |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Middleware** | `POST` | `/registrarVenta` | `{"cliente": {...}, "items": [{"producto_id": str, "cantidad": int}], "metodo_pago": str}` | Resumen consolidado: `id_venta`, `numero_factura`, `cufe`, `numero_guia_transporte`, `bloques_blockchain` | 200, 400, 502, 503 |
+| **Middleware** | `POST` | `/registrarCompra` | `{"proveedor": {...}, "items": [{"producto_id": str, "cantidad": int}], "terminos_pago": str}` | Resumen consolidado: `id_compra`, `numero_factura`, `cufe`, `bloques_blockchain` | 200, 400, 502, 503 |
+| **Middleware** | `GET` | `/cargarProductos` | Ninguno | `{"status": "EXITOSO", "total_productos": int, "productos": [...]}` | 200, 503 |
+| **Middleware** | `GET` | `/cargarRequerimientosProductos` | Ninguno | `{"status": "EXITOSO", "total_requerimientos": int, "requerimientos": [...]}` | 200, 503 |
 | **Inventario** | `GET` | `/cargarProductos` | Ninguno | `{"status": "EXITOSO", "total_productos": int, "productos": [{"id": str, "nombre": str, "precio_unitario": float, "stock_actual": int, ...}]}` | 200 |
 | **Inventario** | `GET` | `/cargarRequerimientosProductos` | Ninguno | `{"status": "EXITOSO", "total_requerimientos": int, "requerimientos": [{"producto_id": str, "stock_actual": int, "cantidad_sugerida": int, ...}]}` | 200 |
 | **Inventario** | `POST` | `/actualizarInventario` | `{"tipo": "VENTA"\|"ADQUISICION", "producto_id": str, "cantidad": int, "referencia": str, "motivo": str}` | `{"status": "EXITOSO", "stock_anterior": int, "stock_resultante": int, "bloque_minado": {"index": int, "proof": int, "hash": str, ...}}` | 200, 400 |
@@ -105,11 +104,6 @@ A continuación se especifican los contratos REST de cada componente:
 | **Contabilidad** | `POST` | `/generarFactura` | `{"tipo_operacion": "VENTA"\|"COMPRA", "referencia_operacion": str, "emisor": str, "receptor": str, "subtotal": float, "iva": float, "total": float, "detalles": [...]}` | `{"status": "EXITOSO", "factura": {"numero_factura": str, "cufe": str, "fecha_emision": str, "estado_tributario": "VALIDADA_DIAN"}}` | 200, 400 |
 | **Contabilidad** | `GET` | `/balance` | Ninguno | `{"total_ingresos_ventas": float, "total_egresos_compras": float, "balance_neto": float, "cantidad_facturas_emitidas": int}` | 200 |
 | **Transportador** | `POST` | `/ordenarTransporte`| `{"id_venta": str, "destinatario": str, "direccion_entrega": str, "ciudad": str, "paquetes": [...]}` | `{"status": "EXITOSO", "guia": {"numero_guia": str, "transportadora": str, "vehiculo_asignado": str, "fecha_estimada_entrega": str}}` | 200, 400 |
-| **Middleware** | `POST` | `/orquestar/venta` | `{"cliente": {...}, "items": [{"producto_id": str, "cantidad": int}], "metodo_pago": str}` | Resumen consolidado: `id_venta`, `numero_factura`, `cufe`, `numero_guia_transporte`, `bloques_blockchain`, etc. | 200, 400, 502, 503 |
-| **Middleware** | `POST` | `/orquestar/compra` | `{"proveedor": {...}, "items": [{"producto_id": str, "cantidad": int}], "terminos_pago": str}` | Resumen consolidado: `id_compra`, `numero_factura`, `cufe`, `bloques_blockchain` | 200, 400, 502, 503 |
-| **Middleware** | `GET` | `/orquestar/salud` | Ninguno | Diagnóstico en tiempo real del estado de conexión hacia los 4 microservicios de dominio. | 200 |
-| **Tienda** | `POST` | `/comprar` | `{"cliente": {...}, "items": [...]}` | Delega y retorna el resultado de `Middleware.orquestar_venta()` | 200, 400, 503 |
-| **Atención Prov.**| `POST` | `/abastecer` | `{"proveedor": {...}, "items": [...]}` | Delega y retorna el resultado de `Middleware.orquestar_compra()` | 200, 400, 503 |
 
 ---
 
@@ -154,14 +148,10 @@ middleware/
 ├── transportador/                             # Microservicio Transportador y Logística
 │   └── main.py                                # API FastAPI (ordenarTransporte, guías, vehículos)
 ├── middleware/                                # Componente Principal: Middleware Orquestador
-│   └── main.py                                # Motor de Orquestación Central (orquestar/venta, orquestar/compra)
-├── tienda/                                    # Portal Web y Gateway Cliente
-│   └── main.py                                # Interfaz Web HTML y API cliente
-├── atencion_proveedores/                      # Portal Web y Gateway Proveedores
-│   └── main.py                                # Interfaz Web HTML y API proveedores
+│   └── main.py                                # Endpoints: registrarVenta, registrarCompra, cargarProductos, cargarRequerimientosProductos
 └── scripts/
     ├── comandos_manuales.txt                  # Listado de comandos Docker manuales
-    ├── iniciar_contenedores.ps1               # Script PowerShell para iniciar los 7 contenedores
+    ├── iniciar_contenedores.ps1               # Script PowerShell para iniciar los 5 contenedores
     ├── detener_contenedores.ps1               # Script PowerShell para detener y limpiar contenedores
     ├── iniciar_contenedores.sh                # Script Bash para entornos Linux/macOS
     ├── detener_contenedores.sh                # Script Bash para detener en Linux/macOS
@@ -192,7 +182,7 @@ docker rm builder-alpine-fastapi
 docker network create red-muebles
 ```
 
-### Paso 3: Ejecutar los Contenedores Manualmente
+### Paso 3: Ejecutar los 5 Contenedores Manualmente
 Ubicado en el directorio raíz del proyecto (`c:\Users\johan\Downloads\a\middleware`), ejecute los siguientes comandos:
 
 #### En Windows PowerShell:
@@ -211,23 +201,15 @@ docker run -d --name c-transportador --network red-muebles -p 8004:8004 -v "${PW
 
 # 5. Middleware Orquestador Central (Puerto 8000)
 docker run -d --name c-middleware --network red-muebles -p 8000:8000 -v "${PWD}/middleware:/app" -w /app alpine-fastapi:latest uvicorn main:app --host 0.0.0.0 --port 8000
-
-# 6. Portal Tienda Cliente (Puerto 8005)
-docker run -d --name c-tienda --network red-muebles -p 8005:8005 -v "${PWD}/tienda:/app" -w /app alpine-fastapi:latest uvicorn main:app --host 0.0.0.0 --port 8005
-
-# 7. Portal Atención Proveedores (Puerto 8006)
-docker run -d --name c-atencion-proveedores --network red-muebles -p 8006:8006 -v "${PWD}/atencion_proveedores:/app" -w /app alpine-fastapi:latest uvicorn main:app --host 0.0.0.0 --port 8006
 ```
 
 *(Nota: También puede ejecutar directamente `./scripts/iniciar_contenedores.ps1` en PowerShell o `./scripts/iniciar_contenedores.sh` en Bash).*
 
-*(Nota: También puede ejecutar directamente `./scripts/iniciar_contenedores.ps1` en PowerShell o `./scripts/iniciar_contenedores.sh` en Bash).*
-
-### Paso 3: Verificar los Contenedores
+### Paso 4: Verificar los Contenedores
 ```bash
 docker ps
 ```
-Debe observar los 7 contenedores con estado `Up`.
+Debe observar los 5 contenedores con estado `Up`.
 
 ---
 
@@ -235,10 +217,10 @@ Debe observar los 7 contenedores con estado `Up`.
 
 ### 7.1. Ejecución del Script de Prueba Automatizado
 El repositorio incluye un script completo de prueba end-to-end (`scripts/probar_sistema.py`) que valida:
-- Conectividad y salud del Middleware y los 6 microservicios.
-- Consulta de catálogo y balance inicial de la Blockchain.
-- Ejecución completa de una venta orquestada (con facturación DIAN, CUFE, transporte y minado PoW en Blockchain).
-- Ejecución completa de una compra orquestada a proveedores (con aumento de existencias en Blockchain).
+- Consulta de catálogo (`GET /cargarProductos`) desde el Middleware.
+- Consulta de requerimientos (`GET /cargarRequerimientosProductos`) desde el Middleware.
+- Ejecución completa de una venta orquestada (`POST /registrarVenta`) sin campo `observaciones`.
+- Ejecución completa de una compra orquestada (`POST /registrarCompra`) sin campo `observaciones`.
 - Verificación matemática de la integridad de la cadena de bloques (`valida: True`).
 - Balance contable consolidado.
 
@@ -247,19 +229,11 @@ Para ejecutarlo:
 py scripts/probar_sistema.py
 ```
 
-### 7.2. Acceso a las Interfaces Web y Documentación Swagger
-Una vez levantados los contenedores, puede interactuar con el sistema a través de su navegador web:
-
-- **Middleware Orquestador (Documentación Swagger):**  
-  [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Portal Web de la Tienda (Cliente):**  
-  [http://localhost:8005](http://localhost:8005)
-- **Portal Web de Atención a Proveedores:**  
-  [http://localhost:8006](http://localhost:8006)
-- **Auditoría de Blockchain en Inventario:**  
-  [http://localhost:8001/blockchain](http://localhost:8001/blockchain)
-- **Balance Financiero Contable:**  
-  [http://localhost:8003/balance](http://localhost:8003/balance)
+### 7.2. Documentación Swagger Interactiva
+Puede consultar la interfaz interactiva de Swagger UI del Middleware:
+- **Middleware API Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Inventario Blockchain Ledger:** [http://localhost:8001/blockchain](http://localhost:8001/blockchain)
+- **Contabilidad Balance:** [http://localhost:8003/balance](http://localhost:8003/balance)
 
 ---
 
@@ -267,8 +241,8 @@ Una vez levantados los contenedores, puede interactuar con el sistema a través 
 
 Para detener y eliminar todos los contenedores y la red creada:
 ```powershell
-docker stop c-inventario c-compras-ventas c-contabilidad c-transportador c-middleware c-tienda c-atencion-proveedores
-docker rm c-inventario c-compras-ventas c-contabilidad c-transportador c-middleware c-tienda c-atencion-proveedores
+docker stop c-inventario c-compras-ventas c-contabilidad c-transportador c-middleware
+docker rm c-inventario c-compras-ventas c-contabilidad c-transportador c-middleware
 docker network rm red-muebles
 ```
 *(O ejecute `./scripts/detener_contenedores.ps1` en PowerShell).*

@@ -36,21 +36,6 @@ class GenerarFacturaRequest(BaseModel):
     metodo_pago: Optional[str] = "ELECTRONICO"
 
 
-@app.get("/")
-def estado():
-    return {
-        "servicio": "Contabilidad y Facturación",
-        "estado": "ACTIVO",
-        "total_facturas_emitidas": len(facturas_db),
-        "metodos_disponibles": [
-            "POST /generarFactura",
-            "GET /facturas",
-            "GET /facturas/{numero_factura}",
-            "GET /balance"
-        ]
-    }
-
-
 @app.post("/generarFactura")
 def generar_factura(payload: GenerarFacturaRequest):
     """
@@ -110,13 +95,6 @@ def listar_facturas():
         "total_facturas": len(facturas_db),
         "facturas": list(facturas_db.values())
     }
-
-
-@app.get("/facturas/{numero_factura}")
-def consultar_factura(numero_factura: str):
-    if numero_factura not in facturas_db:
-        raise HTTPException(status_code=404, detail="Factura no encontrada.")
-    return facturas_db[numero_factura]
 
 
 @app.get("/balance")

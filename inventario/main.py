@@ -21,21 +21,6 @@ class ActualizarInventarioRequest(BaseModel):
     motivo: Optional[str] = Field("", description="Detalle explicativo de la operación")
 
 
-@app.get("/")
-def estado():
-    return {
-        "servicio": "Inventario con Blockchain",
-        "estado": "ACTIVO",
-        "total_bloques": len(blockchain.chain),
-        "metodos_disponibles": [
-            "GET /cargarProductos",
-            "GET /cargarRequerimientosProductos",
-            "POST /actualizarInventario",
-            "GET /blockchain"
-        ]
-    }
-
-
 @app.get("/cargarProductos")
 def cargar_productos():
     """

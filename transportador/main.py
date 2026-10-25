@@ -33,20 +33,6 @@ class OrdenarTransporteRequest(BaseModel):
     paquetes: List[PaqueteInfo] = Field(..., description="Lista de artículos a transportar")
 
 
-@app.get("/")
-def estado():
-    return {
-        "servicio": "Transportador y Logística",
-        "estado": "ACTIVO",
-        "total_guias_generadas": len(guias_db),
-        "metodos_disponibles": [
-            "POST /ordenarTransporte",
-            "GET /guias",
-            "GET /guias/{numero_guia}"
-        ]
-    }
-
-
 @app.post("/ordenarTransporte")
 def ordenar_transporte(payload: OrdenarTransporteRequest):
     """
@@ -97,10 +83,3 @@ def listar_guias():
         "total": len(guias_db),
         "guias": list(guias_db.values())
     }
-
-
-@app.get("/guias/{numero_guia}")
-def consultar_guia(numero_guia: str):
-    if numero_guia not in guias_db:
-        raise HTTPException(status_code=404, detail="Guía de transporte no encontrada.")
-    return guias_db[numero_guia]

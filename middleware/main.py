@@ -32,117 +32,48 @@ COMPRAS_VENTAS_URL = resolver_url_servicio("COMPRAS_VENTAS_URL", "c-compras-vent
 CONTABILIDAD_URL = resolver_url_servicio("CONTABILIDAD_URL", "c-contabilidad", 8003)
 TRANSPORTADOR_URL = resolver_url_servicio("TRANSPORTADOR_URL", "c-transportador", 8004)
 
-# Registro en memoria de trazabilidad y auditoría de orquestaciones
-trazabilidad_db: List[Dict[str, Any]] = []
-
 
 class ItemSolicitudVenta(BaseModel):
-    producto_id: str
-    cantidad: int = Field(..., gt=0)
+    producto_id: str = Field(..., json_schema_extra={"example": "MUE-001"})
+    cantidad: int = Field(..., gt=0, json_schema_extra={"example": 2})
 
 
 class ClienteSolicitud(BaseModel):
-    nombre: str
-    documento: str
-    direccion: str
-    telefono: Optional[str] = "3001234567"
-    correo: Optional[str] = "cliente@correo.com"
+    nombre: str = Field(..., json_schema_extra={"example": "Carlos Mendoza"})
+    documento: str = Field(..., json_schema_extra={"example": "1018234901"})
+    direccion: str = Field(..., json_schema_extra={"example": "Calle 100 # 19-61, Bogotá"})
+    telefono: Optional[str] = Field("3114567890", json_schema_extra={"example": "3114567890"})
+    correo: Optional[str] = Field("cmendoza@gmail.com", json_schema_extra={"example": "cmendoza@gmail.com"})
 
 
-class OrquestarVentaRequest(BaseModel):
+class RegistrarVentaRequest(BaseModel):
     cliente: ClienteSolicitud
     items: List[ItemSolicitudVenta]
-    metodo_pago: Optional[str] = "TRANSFERENCIA_BANCARIA"
-    observaciones: Optional[str] = "Venta coordinada por Middleware"
+    metodo_pago: Optional[str] = Field("TRANSFERENCIA_PSE", json_schema_extra={"example": "TRANSFERENCIA_PSE"})
 
 
 class ItemSolicitudCompra(BaseModel):
-    producto_id: str
-    cantidad: int = Field(..., gt=0)
-    costo_unitario: Optional[float] = None
+    producto_id: str = Field(..., json_schema_extra={"example": "MUE-001"})
+    cantidad: int = Field(..., gt=0, json_schema_extra={"example": 5})
+    costo_unitario: Optional[float] = Field(None, json_schema_extra={"example": 750000.0})
 
 
 class ProveedorSolicitud(BaseModel):
-    nombre: str
-    nit: str
-    contacto: Optional[str] = "Asesor Comercial"
-    telefono: Optional[str] = "3109876543"
-    correo: Optional[str] = "proveedor@maderas.com"
+    nombre: str = Field(..., json_schema_extra={"example": "Industrias Madereras del Cauca S.A.S."})
+    nit: str = Field(..., json_schema_extra={"example": "890.301.204-5"})
+    contacto: Optional[str] = Field("Maria Fernanda Ruiz", json_schema_extra={"example": "Maria Fernanda Ruiz"})
+    telefono: Optional[str] = Field("3209876543", json_schema_extra={"example": "3209876543"})
+    correo: Optional[str] = Field("ventas@maderascauca.com", json_schema_extra={"example": "ventas@maderascauca.com"})
 
 
-class OrquestarCompraRequest(BaseModel):
+class RegistrarCompraRequest(BaseModel):
     proveedor: ProveedorSolicitud
     items: List[ItemSolicitudCompra]
-    terminos_pago: Optional[str] = "CREDITO_30_DIAS"
-    observaciones: Optional[str] = "Reabastecimiento coordinado por Middleware"
+    terminos_pago: Optional[str] = Field("CREDITO_45_DIAS", json_schema_extra={"example": "CREDITO_45_DIAS"})
 
 
-def _resolver_url(url_principal: str, fallback_puerto: int) -> str:
-    """Retorna la URL configurada o fallback a localhost si no está en red Docker"""
-    return url_principal
-
-
-@app.get("/")
-def estado():
-    return {
-        "componente": "Middleware Orquestador Central",
-        "rol": "Coordinador central de arquitectura distribuida orquestada",
-        "estado": "ACTIVO",
-        "servicios_coordinados": {
-            "inventario": INVENTARIO_URL,
-            "compras_ventas": COMPRAS_VENTAS_URL,
-            "contabilidad": CONTABILIDAD_URL,
-            "transportador": TRANSPORTADOR_URL
-        },
-        "flujos_orquestados": [
-            "POST /orquestar/venta (Flujo completo de venta a cliente)",
-            "POST /orquestar/compra (Flujo completo de compra a proveedor)",
-            "GET /orquestar/catalogo (Consulta centralizada de catálogo con stock de blockchain)",
-            "GET /orquestar/requerimientos (Consulta de necesidades de reabastecimiento)",
-            "GET /orquestar/blockchain (Auditoría del ledger de inventario)",
-            "GET /orquestar/balance (Auditoría contable y financiera)",
-            "GET /orquestar/trazabilidad (Historial de orquestaciones ejecutadas)",
-            "GET /orquestar/salud (Diagnóstico de salud de todos los nodos)"
-        ]
-    }
-
-
-@app.get("/orquestar/salud")
-async def verificar_salud_servicios():
-    """Realiza un ping a todos los microservicios participantes en la red distribuida"""
-    servicios = {
-        "inventario": f"{INVENTARIO_URL}/",
-        "compras_ventas": f"{COMPRAS_VENTAS_URL}/",
-        "contabilidad": f"{CONTABILIDAD_URL}/",
-        "transportador": f"{TRANSPORTADOR_URL}/"
-    }
-    diagnostico = {}
-
-    async with httpx.AsyncClient(timeout=3.0) as client:
-        for nombre, url in servicios.items():
-            try:
-                res = await client.get(url)
-                diagnostico[nombre] = {
-                    "url": url,
-                    "estado": "CONECTADO" if res.status_code == 200 else f"HTTP_{res.status_code}",
-                    "detalle": res.json().get("servicio", "OK")
-                }
-            except Exception as e:
-                diagnostico[nombre] = {
-                    "url": url,
-                    "estado": "NO_DISPONIBLE",
-                    "error": str(e)
-                }
-
-    return {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "middleware_estado": "OPERATIVO",
-        "diagnostico_nodos": diagnostico
-    }
-
-
-@app.get("/orquestar/catalogo")
-async def consultar_catalogo():
+@app.get("/cargarProductos")
+async def cargar_productos():
     """Consulta al microservicio de inventario para obtener el stock desde la blockchain"""
     async with httpx.AsyncClient(timeout=5.0) as client:
         try:
@@ -154,8 +85,8 @@ async def consultar_catalogo():
             raise HTTPException(status_code=503, detail=f"No fue posible conectar con Inventario: {str(e)}")
 
 
-@app.get("/orquestar/requerimientos")
-async def consultar_requerimientos():
+@app.get("/cargarRequerimientosProductos")
+async def cargar_requerimientos_productos():
     """Consulta al inventario los productos que necesitan reabastecimiento"""
     async with httpx.AsyncClient(timeout=5.0) as client:
         try:
@@ -167,43 +98,8 @@ async def consultar_requerimientos():
             raise HTTPException(status_code=503, detail=f"No fue posible conectar con Inventario: {str(e)}")
 
 
-@app.get("/orquestar/blockchain")
-async def consultar_blockchain():
-    """Consulta el estado del blockchain en el microservicio de inventario"""
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        try:
-            res = await client.get(f"{INVENTARIO_URL}/blockchain")
-            if res.status_code != 200:
-                raise HTTPException(status_code=res.status_code, detail=res.text)
-            return res.json()
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"No fue posible conectar con Inventario: {str(e)}")
-
-
-@app.get("/orquestar/balance")
-async def consultar_balance():
-    """Consulta el balance financiero consolidado en el microservicio de contabilidad"""
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        try:
-            res = await client.get(f"{CONTABILIDAD_URL}/balance")
-            if res.status_code != 200:
-                raise HTTPException(status_code=res.status_code, detail=res.text)
-            return res.json()
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"No fue posible conectar con Contabilidad: {str(e)}")
-
-
-@app.get("/orquestar/trazabilidad")
-def consultar_trazabilidad():
-    """Retorna la bitácora completa de procesos orquestados por el middleware"""
-    return {
-        "total_procesos_orquestados": len(trazabilidad_db),
-        "historial": trazabilidad_db
-    }
-
-
-@app.post("/orquestar/venta")
-async def orquestar_venta(payload: OrquestarVentaRequest):
+@app.post("/registrarVenta")
+async def registrar_venta(payload: RegistrarVentaRequest):
     """
     FLUJO ORQUESTADO DE VENTA A CLIENTE:
     El Middleware actúa como director orquestador ejecutando la siguiente secuencia:
@@ -213,7 +109,7 @@ async def orquestar_venta(payload: OrquestarVentaRequest):
       4. Compras/Ventas: Vincula la factura a la venta (recibirFactura).
       5. Inventario: Actualiza el stock minando un nuevo bloque inmutable en la Blockchain.
       6. Transportador: Programa el despacho logístico y genera la guía de transporte.
-      7. Consolidación: Registra la trazabilidad y retorna la confirmación completa.
+      7. Consolidación: Retorna la confirmación completa.
     """
     id_proceso = f"ORQ-VEN-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
     pasos_completados = []
@@ -263,7 +159,7 @@ async def orquestar_venta(payload: OrquestarVentaRequest):
             "cliente": payload.cliente.model_dump(),
             "items": items_venta_procesados,
             "metodo_pago": payload.metodo_pago,
-            "observaciones": f"{payload.observaciones} | Orquestado por Middleware [{id_proceso}]"
+            "observaciones": f"Venta coordinada por Middleware [{id_proceso}]"
         }
         try:
             res_cv = await client.post(f"{COMPRAS_VENTAS_URL}/registrarVenta", json=req_venta)
@@ -417,22 +313,6 @@ async def orquestar_venta(payload: OrquestarVentaRequest):
             "resultado": "OK - Logística programada y guía emitida"
         })
 
-    # Consolidación final del proceso orquestado
-    registro_trazabilidad = {
-        "id_proceso": id_proceso,
-        "tipo_flujo": "ORQUESTACION_VENTA",
-        "fecha": datetime.datetime.now().isoformat(),
-        "cliente": payload.cliente.nombre,
-        "id_venta": id_venta,
-        "numero_factura": factura_generada["numero_factura"],
-        "cufe": factura_generada["cufe"],
-        "numero_guia_transporte": guia_transporte["numero_guia"],
-        "total_transaccion": venta_registrada["total"],
-        "pasos": pasos_completados,
-        "estado": "COMPLETADO_EXITOSAMENTE"
-    }
-
-    trazabilidad_db.append(registro_trazabilidad)
     logger.info(f"[{id_proceso}] Venta orquestada con éxito total.")
 
     return {
@@ -460,8 +340,8 @@ async def orquestar_venta(payload: OrquestarVentaRequest):
     }
 
 
-@app.post("/orquestar/compra")
-async def orquestar_compra(payload: OrquestarCompraRequest):
+@app.post("/registrarCompra")
+async def registrar_compra(payload: RegistrarCompraRequest):
     """
     FLUJO ORQUESTADO DE COMPRA A PROVEEDOR:
     El Middleware coordina la adquisición de muebles con proveedores:
@@ -470,7 +350,7 @@ async def orquestar_compra(payload: OrquestarCompraRequest):
       3. Contabilidad: Emite la factura/cuenta por pagar con su correspondiente consecutivo y CUFE.
       4. Compras/Ventas: Registra la factura en el expediente de compras (recibirFactura).
       5. Inventario: Actualiza el inventario minando bloques de adquisición en la Blockchain.
-      6. Consolidación: Registra la trazabilidad y confirma la transacción de reabastecimiento.
+      6. Consolidación: Confirma la transacción de reabastecimiento.
     """
     id_proceso = f"ORQ-COM-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
     pasos_completados = []
@@ -516,7 +396,7 @@ async def orquestar_compra(payload: OrquestarCompraRequest):
             "proveedor": payload.proveedor.model_dump(),
             "items": items_compra_procesados,
             "terminos_pago": payload.terminos_pago,
-            "observaciones": f"{payload.observaciones} | Orquestado por Middleware [{id_proceso}]"
+            "observaciones": f"Compra coordinada por Middleware [{id_proceso}]"
         }
         try:
             res_cv = await client.post(f"{COMPRAS_VENTAS_URL}/registrarCompra", json=req_compra)
@@ -634,21 +514,6 @@ async def orquestar_compra(payload: OrquestarCompraRequest):
             "resultado": "OK - Blockchain actualizada con ingreso de stock"
         })
 
-    # Consolidación final de la compra orquestada
-    registro_trazabilidad = {
-        "id_proceso": id_proceso,
-        "tipo_flujo": "ORQUESTACION_COMPRA",
-        "fecha": datetime.datetime.now().isoformat(),
-        "proveedor": payload.proveedor.nombre,
-        "id_compra": id_compra,
-        "numero_factura": factura_generada["numero_factura"],
-        "cufe": factura_generada["cufe"],
-        "total_transaccion": compra_registrada["total"],
-        "pasos": pasos_completados,
-        "estado": "COMPLETADO_EXITOSAMENTE"
-    }
-
-    trazabilidad_db.append(registro_trazabilidad)
     logger.info(f"[{id_proceso}] Compra orquestada con éxito total.")
 
     return {
