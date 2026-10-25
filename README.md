@@ -88,22 +88,26 @@ El presente proyecto implementa un **sistema de software distribuido** para una 
 
 A continuación se especifican los contratos REST de cada componente:
 
-| Componente | Método HTTP | Endpoint | Parámetros de Entrada (Request Body) | Objeto de Retorno (Response Body) | Códigos HTTP |
+| Componente | Método HTTP | Endpoint | Parámetros (Request Body / Entrada) | Objeto de Retorno (Response Body) | Códigos HTTP |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Middleware** | `POST` | `/registrarVenta` | `{"cliente": {...}, "items": [{"producto_id": str, "cantidad": int}], "metodo_pago": str}` | Resumen consolidado: `id_venta`, `numero_factura`, `cufe`, `numero_guia_transporte`, `bloques_blockchain` | 200, 400, 502, 503 |
-| **Middleware** | `POST` | `/registrarCompra` | `{"proveedor": {...}, "items": [{"producto_id": str, "cantidad": int}], "terminos_pago": str}` | Resumen consolidado: `id_compra`, `numero_factura`, `cufe`, `bloques_blockchain` | 200, 400, 502, 503 |
+| **Middleware** | `POST` | `/registrarVenta` | **Body:** `RegistrarVentaRequest` (`cliente`, `items`, `metodo_pago`) | `OrquestarVentaResponse` (resumen con `id_venta`, `numero_factura`, `cufe`, `numero_guia_transporte`, `bloques_blockchain`) | 200, 400, 502, 503 |
+| **Middleware** | `POST` | `/registrarCompra` | **Body:** `RegistrarCompraRequest` (`proveedor`, `items`, `terminos_pago`) | `OrquestarCompraResponse` (resumen con `id_compra`, `numero_factura`, `cufe`, `bloques_blockchain`) | 200, 400, 502, 503 |
 | **Middleware** | `GET` | `/cargarProductos` | Ninguno | `{"status": "EXITOSO", "total_productos": int, "productos": [...]}` | 200, 503 |
 | **Middleware** | `GET` | `/cargarRequerimientosProductos` | Ninguno | `{"status": "EXITOSO", "total_requerimientos": int, "requerimientos": [...]}` | 200, 503 |
-| **Inventario** | `GET` | `/cargarProductos` | Ninguno | `{"status": "EXITOSO", "total_productos": int, "productos": [{"id": str, "nombre": str, "precio_unitario": float, "stock_actual": int, ...}]}` | 200 |
-| **Inventario** | `GET` | `/cargarRequerimientosProductos` | Ninguno | `{"status": "EXITOSO", "total_requerimientos": int, "requerimientos": [{"producto_id": str, "stock_actual": int, "cantidad_sugerida": int, ...}]}` | 200 |
-| **Inventario** | `POST` | `/actualizarInventario` | `{"tipo": "VENTA"\|"ADQUISICION", "producto_id": str, "cantidad": int, "referencia": str, "motivo": str}` | `{"status": "EXITOSO", "stock_anterior": int, "stock_resultante": int, "bloque_minado": {"index": int, "proof": int, "hash": str, ...}}` | 200, 400 |
-| **Inventario** | `GET` | `/blockchain` | Ninguno | `{"blockchain_valida": bool, "longitud": int, "cadena": [bloques...]}` | 200 |
-| **Compras/Ventas**| `POST` | `/registrarVenta` | `{"cliente": {...}, "items": [{"producto_id": str, "cantidad": int, "precio_unitario": float}], "metodo_pago": str}` | `{"status": "EXITOSO", "venta": {"id_venta": str, "subtotal": float, "iva": float, "total": float, "estado": "REGISTRADA"}}` | 200, 400 |
-| **Compras/Ventas**| `POST` | `/registrarCompra` | `{"proveedor": {...}, "items": [{"producto_id": str, "cantidad": int, "costo_unitario": float}], "terminos_pago": str}` | `{"status": "EXITOSO", "compra": {"id_compra": str, "subtotal": float, "iva": float, "total": float, "estado": "REGISTRADA"}}` | 200, 400 |
-| **Compras/Ventas**| `POST` | `/recibirFactura` | `{"referencia_operacion": str, "numero_factura": str, "cufe": str, "fecha_emision": str, "total_facturado": float}` | `{"status": "EXITOSO", "registro": {...}}` | 200, 404 |
-| **Contabilidad** | `POST` | `/generarFactura` | `{"tipo_operacion": "VENTA"\|"COMPRA", "referencia_operacion": str, "emisor": str, "receptor": str, "subtotal": float, "iva": float, "total": float, "detalles": [...]}` | `{"status": "EXITOSO", "factura": {"numero_factura": str, "cufe": str, "fecha_emision": str, "estado_tributario": "VALIDADA_DIAN"}}` | 200, 400 |
-| **Contabilidad** | `GET` | `/balance` | Ninguno | `{"total_ingresos_ventas": float, "total_egresos_compras": float, "balance_neto": float, "cantidad_facturas_emitidas": int}` | 200 |
-| **Transportador** | `POST` | `/ordenarTransporte`| `{"id_venta": str, "destinatario": str, "direccion_entrega": str, "ciudad": str, "paquetes": [...]}` | `{"status": "EXITOSO", "guia": {"numero_guia": str, "transportadora": str, "vehiculo_asignado": str, "fecha_estimada_entrega": str}}` | 200, 400 |
+| **Inventario** | `GET` | `/cargarProductos` | Ninguno | `CargarProductosResponse` (`total_productos`, `productos` con stock calculado en Blockchain) | 200 |
+| **Inventario** | `GET` | `/cargarRequerimientosProductos` | Ninguno | `CargarRequerimientosResponse` (`total_requerimientos`, `requerimientos` por déficit de stock) | 200 |
+| **Inventario** | `POST` | `/actualizarInventario` | **Body:** `ActualizarInventarioRequest` (`tipo`: VENTA\|ADQUISICION, `producto_id`, `cantidad`, `referencia`, `motivo`) | `ActualizarInventarioResponse` (`stock_anterior`, `stock_resultante`, `bloque_minado` con hash y proof) | 200, 400, 500 |
+| **Inventario** | `GET` | `/blockchain` | Ninguno | `BlockchainResponse` (`blockchain_valida`: bool, `longitud`: int, `cadena`: list de bloques) | 200 |
+| **Compras/Ventas**| `POST` | `/registrarVenta` | **Body:** `RegistrarVentaRequest` (`cliente`, `items`, `metodo_pago`) | `RegistrarVentaResponse` (`id_venta`, `subtotal`, `iva`, `total`, `estado`) | 201, 400 |
+| **Compras/Ventas**| `POST` | `/registrarCompra` | **Body:** `RegistrarCompraRequest` (`proveedor`, `items`, `terminos_pago`) | `RegistrarCompraResponse` (`id_compra`, `subtotal`, `iva`, `total`, `estado`) | 201, 400 |
+| **Compras/Ventas**| `POST` | `/recibirFactura` | **Body:** `RecibirFacturaRequest` (`referencia_operacion`, `numero_factura`, `cufe`, `fecha_emision`, `total_facturado`) | `RecibirFacturaResponse` (orden comercial vinculada a la factura contable) | 200, 404 |
+| **Compras/Ventas**| `GET` | `/ventas` | Ninguno | `ListarVentasResponse` (`total`, listado histórico de órdenes de venta) | 200 |
+| **Compras/Ventas**| `GET` | `/compras` | Ninguno | `ListarComprasResponse` (`total`, listado histórico de órdenes de compra) | 200 |
+| **Contabilidad** | `POST` | `/generarFactura` | **Body:** `GenerarFacturaRequest` (`tipo_operacion`: VENTA\|COMPRA, `referencia_operacion`, `emisor`, `receptor`, `subtotal`, `iva`, `total`, `detalles`) | `GenerarFacturaResponse` (`numero_factura`, `cufe` SHA-256, `fecha_emision`, `estado_tributario`) | 201, 400 |
+| **Contabilidad** | `GET` | `/facturas` | Ninguno | `ListarFacturasResponse` (`total_facturas`, listado de comprobantes fiscales emitidos) | 200 |
+| **Contabilidad** | `GET` | `/balance` | Ninguno | `BalanceResponse` (`total_ingresos_ventas`, `total_egresos_compras`, `balance_neto`, `cantidad_facturas_emitidas`) | 200 |
+| **Transportador** | `POST` | `/ordenarTransporte`| **Body:** `OrdenarTransporteRequest` (`id_venta`, `destinatario`, `direccion_entrega`, `ciudad`, `paquetes`) | `OrdenarTransporteResponse` (`guia` con `numero_guia`, `vehiculo_asignado`, `ruta_asignada`, `fecha_estimada_entrega`) | 201, 400 |
+| **Transportador** | `GET` | `/guias` | Ninguno | `ListarGuiasResponse` (`total`, listado de guías de despacho programadas) | 200 |
 
 ---
 
@@ -130,25 +134,44 @@ El componente `inventario` incorpora un ledger distribuido inmutable desarrollad
 
 ---
 
-## 5. Estructura del Proyecto
+## 5. Estructura del Proyecto y Programación Orientada a Objetos (POO)
 
-Cada componente está aislado dentro de su propia carpeta de microservicio:
+Cada componente está aislado dentro de su propia carpeta de microservicio, con una subcarpeta dedicada `schemas/` para sus modelos Pydantic y encapsulación en clases de dominio orientadas a objetos (POO):
 
 ```
 middleware/
 ├── TallerCorte2TiendaMuebles2026-1.docx.pdf   # Documento oficial del taller
 ├── README.md                                  # Documentación técnica completa
-├── inventario/                                # Microservicio Inventario con Blockchain
-│   ├── blockchain.py                          # Algoritmo de Blockchain, PoW y SHA-256
-│   └── main.py                                # API FastAPI (cargarProductos, actualizarInventario, etc.)
-├── compras_ventas/                            # Microservicio Compras y Ventas
-│   └── main.py                                # API FastAPI (registrarVenta, registrarCompra, recibirFactura)
-├── contabilidad/                              # Microservicio Contabilidad y Facturación
-│   └── main.py                                # API FastAPI (generarFactura, balance, CUFE)
-├── transportador/                             # Microservicio Transportador y Logística
-│   └── main.py                                # API FastAPI (ordenarTransporte, guías, vehículos)
-├── middleware/                                # Componente Principal: Middleware Orquestador
-│   └── main.py                                # Endpoints: registrarVenta, registrarCompra, cargarProductos, cargarRequerimientosProductos
+├── inventario/                                # Microservicio Inventario con Blockchain (POO)
+│   ├── blockchain.py                          # Clases: Transaccion, Bloque, BlockchainInventario
+│   ├── schemas/                               # Carpeta de esquemas Pydantic
+│   │   ├── __init__.py
+│   │   └── inventario.py                      # ActualizarInventarioRequest
+│   └── main.py                                # Endpoints delegando a BlockchainInventario
+├── compras_ventas/                            # Microservicio Compras y Ventas (POO)
+│   ├── services.py                            # Clase GestorComprasVentas (POO)
+│   ├── schemas/                               # Carpeta de esquemas Pydantic
+│   │   ├── __init__.py
+│   │   └── compras_ventas.py                  # RegistrarVentaRequest, RegistrarCompraRequest, etc.
+│   └── main.py                                # Endpoints delegando a GestorComprasVentas
+├── contabilidad/                              # Microservicio Contabilidad y Facturación (POO)
+│   ├── services.py                            # Clase GestorContable (POO)
+│   ├── schemas/                               # Carpeta de esquemas Pydantic
+│   │   ├── __init__.py
+│   │   └── contabilidad.py                    # GenerarFacturaRequest, DetalleItem
+│   └── main.py                                # Endpoints delegando a GestorContable
+├── transportador/                             # Microservicio Transportador y Logística (POO)
+│   ├── services.py                            # Clase GestorTransporte (POO)
+│   ├── schemas/                               # Carpeta de esquemas Pydantic
+│   │   ├── __init__.py
+│   │   └── transportador.py                   # OrdenarTransporteRequest, PaqueteInfo
+│   └── main.py                                # Endpoints delegando a GestorTransporte
+├── middleware/                                # Componente Principal: Middleware Orquestador (POO)
+│   ├── orchestrator.py                        # Clase OrquestadorMiddleware (POO)
+│   ├── schemas/                               # Carpeta de esquemas Pydantic
+│   │   ├── __init__.py
+│   │   └── middleware.py                      # RegistrarVentaRequest, RegistrarCompraRequest, etc.
+│   └── main.py                                # Endpoints REST delegando a OrquestadorMiddleware
 └── scripts/
     ├── comandos_manuales.txt                  # Listado de comandos Docker manuales
     ├── iniciar_contenedores.ps1               # Script PowerShell para iniciar los 5 contenedores
@@ -158,7 +181,12 @@ middleware/
     └── probar_sistema.py                      # Script de pruebas end-to-end automatizadas
 ```
 
-> **OPTIMIZACIÓN:** Como todos los microservicios comparten la misma base (`fastapi`, `uvicorn`, `pydantic` y `httpx`), no se requiere un archivo `requirements.txt` redundante en cada carpeta. En su lugar, se instala la pila tecnológica una única vez sobre un contenedor Alpine y se genera la imagen base `alpine-fastapi:latest` mediante **`docker commit`** (sin Dockerfile ni docker-compose).
+> **PROGRAMACIÓN ORIENTADA A OBJETOS (POO):** Cada servicio cuenta con clases dedicadas que encapsulan su estado y operaciones de negocio:
+> - `inventario`: `BlockchainInventario`, `Bloque`, `Transaccion`.
+> - `compras_ventas`: `GestorComprasVentas` con métodos para procesar ventas, compras y confirmaciones de facturación.
+> - `contabilidad`: `GestorContable` con métodos para cálculo de impuestos, CUFE y balances.
+> - `transportador`: `GestorTransporte` con asignación aleatoria/heurística de rutas y flota vehicular.
+> - `middleware`: `OrquestadorMiddleware` con coordinación asíncrona de los flujos de venta y compra.
 
 ---
 

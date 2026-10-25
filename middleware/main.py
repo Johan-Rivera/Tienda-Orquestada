@@ -1,19 +1,54 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-import httpx
+from fastapi import FastAPI, status
+from schemas.middleware import (
+    RegistrarVentaRequest,
+    RegistrarCompraRequest,
+    OrquestarVentaResponse,
+    OrquestarCompraResponse
+)
+from orchestrator import OrquestadorMiddleware
 import os
 import socket
-import datetime
-import logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("middleware-orquestador")
+tags_metadata = [
+    {
+        "name": "Orquestación de Ventas",
+        "description": "Flujo distribuido de venta: validación de existencias en Blockchain, orden comercial, emisión de factura electrónica con CUFE, minado de reducción de stock y despacho logístico."
+    },
+    {
+        "name": "Orquestación de Compras",
+        "description": "Flujo distribuido de abastecimiento con proveedores: validación de catálogo, orden de compra, comprobante contable con CUFE y minado de ingreso de stock en Blockchain."
+    },
+    {
+        "name": "Consultas de Inventario",
+        "description": "Consultas centralizadas hacia la Blockchain de Inventario para visualización de catálogo y detección de productos con stock crítico."
+    }
+]
 
 app = FastAPI(
     title="Middleware Orquestador Central",
-    description="Componente principal de arquitectura distribuida orquestada para coordinar compras y ventas de muebles.",
-    version="1.0.0"
+    description="""
+    ## Sistema Distribuido de la Tienda de Muebles
+    
+    Este componente es el **director orquestador** de la arquitectura distribuida. Provee una interfaz unificada para que cualquier cliente, portal o desarrollador interactúe con el ecosistema sin tener que coordinar microservicios de manera manual.
+    
+    ### Flujos Coordinados:
+    1. **Venta a Clientes (`POST /registrarVenta`):**
+       - **Paso 1:** Valida disponibilidad en tiempo real contra el ledger inmutable de la Blockchain (`Inventario`).
+       - **Paso 2:** Genera la orden mercantil con liquidación de impuestos (`Compras/Ventas`).
+       - **Paso 3:** Emite la Factura Electrónica legal con código CUFE (SHA-256) ante la DIAN (`Contabilidad`).
+       - **Paso 4:** Vincula el número fiscal a la orden comercial (`Compras/Ventas`).
+       - **Paso 5:** Mina un nuevo bloque con algoritmo Proof-of-Work (PoW) reduciendo el stock (`Inventario`).
+       - **Paso 6:** Asigna vehículo de carga, ruta metropolitana y emite la guía de entrega (`Transportador`).
+       
+    2. **Compra a Proveedores (`POST /registrarCompra`):**
+       - **Paso 1:** Valida los productos contra el catálogo corporativo (`Inventario`).
+       - **Paso 2:** Emite la orden mercantil de compra con plazos acordados (`Compras/Ventas`).
+       - **Paso 3:** Emite la factura contable de cuenta por pagar con CUFE (`Contabilidad`).
+       - **Paso 4:** Asocia la factura a la orden mercantil (`Compras/Ventas`).
+       - **Paso 5:** Mina un nuevo bloque PoW aumentando las existencias de forma inmutable (`Inventario`).
+    """,
+    version="1.0.0",
+    openapi_tags=tags_metadata
 )
 
 def resolver_url_servicio(var_entorno: str, docker_name: str, puerto: int) -> str:
@@ -32,506 +67,81 @@ COMPRAS_VENTAS_URL = resolver_url_servicio("COMPRAS_VENTAS_URL", "c-compras-vent
 CONTABILIDAD_URL = resolver_url_servicio("CONTABILIDAD_URL", "c-contabilidad", 8003)
 TRANSPORTADOR_URL = resolver_url_servicio("TRANSPORTADOR_URL", "c-transportador", 8004)
 
-
-class ItemSolicitudVenta(BaseModel):
-    producto_id: str = Field(..., json_schema_extra={"example": "MUE-001"})
-    cantidad: int = Field(..., gt=0, json_schema_extra={"example": 2})
-
-
-class ClienteSolicitud(BaseModel):
-    nombre: str = Field(..., json_schema_extra={"example": "Carlos Mendoza"})
-    documento: str = Field(..., json_schema_extra={"example": "1018234901"})
-    direccion: str = Field(..., json_schema_extra={"example": "Calle 100 # 19-61, Bogotá"})
-    telefono: Optional[str] = Field("3114567890", json_schema_extra={"example": "3114567890"})
-    correo: Optional[str] = Field("cmendoza@gmail.com", json_schema_extra={"example": "cmendoza@gmail.com"})
+# Instancia global del Orquestador orientada a objetos (POO)
+orquestador = OrquestadorMiddleware(
+    inventario_url=INVENTARIO_URL,
+    compras_ventas_url=COMPRAS_VENTAS_URL,
+    contabilidad_url=CONTABILIDAD_URL,
+    transportador_url=TRANSPORTADOR_URL
+)
 
 
-class RegistrarVentaRequest(BaseModel):
-    cliente: ClienteSolicitud
-    items: List[ItemSolicitudVenta]
-    metodo_pago: Optional[str] = Field("TRANSFERENCIA_PSE", json_schema_extra={"example": "TRANSFERENCIA_PSE"})
-
-
-class ItemSolicitudCompra(BaseModel):
-    producto_id: str = Field(..., json_schema_extra={"example": "MUE-001"})
-    cantidad: int = Field(..., gt=0, json_schema_extra={"example": 5})
-    costo_unitario: Optional[float] = Field(None, json_schema_extra={"example": 750000.0})
-
-
-class ProveedorSolicitud(BaseModel):
-    nombre: str = Field(..., json_schema_extra={"example": "Industrias Madereras del Cauca S.A.S."})
-    nit: str = Field(..., json_schema_extra={"example": "890.301.204-5"})
-    contacto: Optional[str] = Field("Maria Fernanda Ruiz", json_schema_extra={"example": "Maria Fernanda Ruiz"})
-    telefono: Optional[str] = Field("3209876543", json_schema_extra={"example": "3209876543"})
-    correo: Optional[str] = Field("ventas@maderascauca.com", json_schema_extra={"example": "ventas@maderascauca.com"})
-
-
-class RegistrarCompraRequest(BaseModel):
-    proveedor: ProveedorSolicitud
-    items: List[ItemSolicitudCompra]
-    terminos_pago: Optional[str] = Field("CREDITO_45_DIAS", json_schema_extra={"example": "CREDITO_45_DIAS"})
-
-
-@app.get("/cargarProductos")
+@app.get(
+    "/cargarProductos",
+    summary="Consultar catálogo de muebles y existencias en Blockchain",
+    description="Consulta al microservicio de Inventario para computar y retornar las existencias disponibles de todos los muebles, calculadas a partir del historial inmutable de transacciones en la Blockchain.",
+    tags=["Consultas de Inventario"]
+)
 async def cargar_productos():
-    """Consulta al microservicio de inventario para obtener el stock desde la blockchain"""
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        try:
-            res = await client.get(f"{INVENTARIO_URL}/cargarProductos")
-            if res.status_code != 200:
-                raise HTTPException(status_code=res.status_code, detail=res.text)
-            return res.json()
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"No fue posible conectar con Inventario: {str(e)}")
+    return await orquestador.cargar_productos()
 
 
-@app.get("/cargarRequerimientosProductos")
+@app.get(
+    "/cargarRequerimientosProductos",
+    summary="Consultar requerimientos de abastecimiento por bajo stock",
+    description="Consulta al microservicio de Inventario los artículos que se encuentran en o por debajo del stock mínimo de seguridad, sugiriendo las cantidades a ordenar para reabastecer el almacén.",
+    tags=["Consultas de Inventario"]
+)
 async def cargar_requerimientos_productos():
-    """Consulta al inventario los productos que necesitan reabastecimiento"""
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        try:
-            res = await client.get(f"{INVENTARIO_URL}/cargarRequerimientosProductos")
-            if res.status_code != 200:
-                raise HTTPException(status_code=res.status_code, detail=res.text)
-            return res.json()
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"No fue posible conectar con Inventario: {str(e)}")
+    return await orquestador.cargar_requerimientos_productos()
 
 
-@app.post("/registrarVenta")
+@app.post(
+    "/registrarVenta",
+    response_model=OrquestarVentaResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Orquestar venta a cliente y coordinar todo el flujo distribuido",
+    description="""
+    Inicia y coordina el flujo completo de venta distribuida:
+    
+    1. **Verificación de Inventario:** Verifica disponibilidad en tiempo real contra la Blockchain. Si no hay suficiente stock, aborta la transacción con código 400.
+    2. **Contrato Comercial:** Registra la orden de venta en Compras/Ventas con cálculo automático de IVA (19%).
+    3. **Facturación Fiscal:** Genera factura electrónica legal con código CUFE (SHA-256) en Contabilidad.
+    4. **Conciliación:** Vincula la factura a la orden mercantil en Compras/Ventas.
+    5. **Minado en Blockchain:** Mina un nuevo bloque PoW por cada artículo vendido en Inventario, reduciendo el stock de manera inmutable.
+    6. **Despacho Logístico:** Genera la guía de transporte en Transportador, asignando camión de carga y fecha de entrega.
+    """,
+    responses={
+        400: {"description": "Stock insuficiente en Blockchain o producto no catalogado."},
+        502: {"description": "Falla de comunicación con alguno de los microservicios participantes."},
+        503: {"description": "Microservicio indispensable inaccesible."}
+    },
+    tags=["Orquestación de Ventas"]
+)
 async def registrar_venta(payload: RegistrarVentaRequest):
-    """
-    FLUJO ORQUESTADO DE VENTA A CLIENTE:
-    El Middleware actúa como director orquestador ejecutando la siguiente secuencia:
-      1. Inventario: Valida disponibilidad de stock en el ledger blockchain para cada ítem.
-      2. Compras/Ventas: Registra la orden comercial de venta con precios oficiales.
-      3. Contabilidad: Emite la factura electrónica formal (genera CUFE).
-      4. Compras/Ventas: Vincula la factura a la venta (recibirFactura).
-      5. Inventario: Actualiza el stock minando un nuevo bloque inmutable en la Blockchain.
-      6. Transportador: Programa el despacho logístico y genera la guía de transporte.
-      7. Consolidación: Retorna la confirmación completa.
-    """
-    id_proceso = f"ORQ-VEN-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-    pasos_completados = []
-    logger.info(f"[{id_proceso}] Iniciando orquestación de venta para cliente: {payload.cliente.nombre}")
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        # ---------------------------------------------------------------------
-        # PASO 1: Validación de stock en Inventario (Blockchain)
-        # ---------------------------------------------------------------------
-        try:
-            res_inv = await client.get(f"{INVENTARIO_URL}/cargarProductos")
-            if res_inv.status_code != 200:
-                raise HTTPException(status_code=502, detail="Falla al consultar el catálogo de Inventario.")
-            catalogo = {p["id"]: p for p in res_inv.json().get("productos", [])}
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Microservicio Inventario inaccesible: {str(e)}")
-
-        items_venta_procesados = []
-        for item in payload.items:
-            if item.producto_id not in catalogo:
-                raise HTTPException(status_code=400, detail=f"El producto '{item.producto_id}' no existe en el catálogo.")
-            info_prod = catalogo[item.producto_id]
-            if info_prod["stock_actual"] < item.cantidad:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Stock insuficiente para '{info_prod['nombre']}' ({item.producto_id}). "
-                           f"Disponible: {info_prod['stock_actual']}, Requerido: {item.cantidad}."
-                )
-            items_venta_procesados.append({
-                "producto_id": item.producto_id,
-                "nombre": info_prod["nombre"],
-                "cantidad": item.cantidad,
-                "precio_unitario": info_prod["precio_unitario"]
-            })
-
-        pasos_completados.append({
-            "paso": 1,
-            "componente": "Inventario",
-            "accion": "cargarProductos / Verificación de stock en Blockchain",
-            "resultado": "OK - Stock suficiente verificado"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 2: Registro de la Venta en Compras/Ventas
-        # ---------------------------------------------------------------------
-        req_venta = {
-            "cliente": payload.cliente.model_dump(),
-            "items": items_venta_procesados,
-            "metodo_pago": payload.metodo_pago,
-            "observaciones": f"Venta coordinada por Middleware [{id_proceso}]"
-        }
-        try:
-            res_cv = await client.post(f"{COMPRAS_VENTAS_URL}/registrarVenta", json=req_venta)
-            if res_cv.status_code != 200:
-                raise HTTPException(status_code=res_cv.status_code, detail=f"Error en Compras/Ventas: {res_cv.text}")
-            venta_registrada = res_cv.json().get("venta")
-            id_venta = venta_registrada["id_venta"]
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Microservicio Compras/Ventas inaccesible: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 2,
-            "componente": "Compras/Ventas",
-            "accion": "registrarVenta",
-            "id_venta": id_venta,
-            "subtotal": venta_registrada["subtotal"],
-            "total": venta_registrada["total"],
-            "resultado": "OK - Venta registrada"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 3: Emisión de Factura en Contabilidad
-        # ---------------------------------------------------------------------
-        req_factura = {
-            "tipo_operacion": "VENTA",
-            "referencia_operacion": id_venta,
-            "emisor": "Muebles Confort S.A.S. - NIT 901.888.777-1",
-            "receptor": f"{payload.cliente.nombre} (CC/NIT: {payload.cliente.documento})",
-            "subtotal": venta_registrada["subtotal"],
-            "iva": venta_registrada["iva"],
-            "total": venta_registrada["total"],
-            "detalles": [
-                {
-                    "producto_id": it["producto_id"],
-                    "nombre": it["nombre"],
-                    "cantidad": it["cantidad"],
-                    "precio_unitario": it["precio_unitario"]
-                } for it in items_venta_procesados
-            ],
-            "metodo_pago": payload.metodo_pago
-        }
-        try:
-            res_cont = await client.post(f"{CONTABILIDAD_URL}/generarFactura", json=req_factura)
-            if res_cont.status_code != 200:
-                raise HTTPException(status_code=res_cont.status_code, detail=f"Error en Contabilidad: {res_cont.text}")
-            factura_generada = res_cont.json().get("factura")
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Microservicio Contabilidad inaccesible: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 3,
-            "componente": "Contabilidad",
-            "accion": "generarFactura",
-            "numero_factura": factura_generada["numero_factura"],
-            "cufe": factura_generada["cufe"],
-            "resultado": "OK - Factura electrónica generada"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 4: Confirmación y vinculación de factura en Compras/Ventas
-        # ---------------------------------------------------------------------
-        req_recibir_fac = {
-            "referencia_operacion": id_venta,
-            "numero_factura": factura_generada["numero_factura"],
-            "cufe": factura_generada["cufe"],
-            "fecha_emision": factura_generada["fecha_emision"],
-            "total_facturado": factura_generada["total"]
-        }
-        try:
-            res_rf = await client.post(f"{COMPRAS_VENTAS_URL}/recibirFactura", json=req_recibir_fac)
-            if res_rf.status_code != 200:
-                logger.warning(f"Advertencia al notificar factura: {res_rf.text}")
-        except Exception as e:
-            logger.warning(f"No se pudo vincular factura en Compras/Ventas: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 4,
-            "componente": "Compras/Ventas",
-            "accion": "recibirFactura",
-            "resultado": "OK - Factura vinculada al registro de venta"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 5: Actualización del inventario en Blockchain (Reducción por Venta)
-        # ---------------------------------------------------------------------
-        bloques_minados = []
-        for item in payload.items:
-            req_act_inv = {
-                "tipo": "VENTA",
-                "producto_id": item.producto_id,
-                "cantidad": item.cantidad,
-                "referencia": id_venta,
-                "motivo": f"Venta {id_venta} - Factura {factura_generada['numero_factura']}"
-            }
-            try:
-                res_act = await client.post(f"{INVENTARIO_URL}/actualizarInventario", json=req_act_inv)
-                if res_act.status_code != 200:
-                    raise HTTPException(status_code=res_act.status_code, detail=f"Error en Blockchain Inventario: {res_act.text}")
-                datos_bloque = res_act.json()
-                bloques_minados.append({
-                    "producto_id": item.producto_id,
-                    "cantidad": item.cantidad,
-                    "stock_resultante": datos_bloque.get("stock_resultante"),
-                    "bloque_hash": datos_bloque.get("bloque_minado", {}).get("hash"),
-                    "bloque_index": datos_bloque.get("bloque_minado", {}).get("index")
-                })
-            except httpx.RequestError as e:
-                raise HTTPException(status_code=503, detail=f"Microservicio Inventario inaccesible durante minado: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 5,
-            "componente": "Inventario",
-            "accion": "actualizarInventario (Minado de Bloques en Blockchain)",
-            "bloques": bloques_minados,
-            "resultado": "OK - Blockchain actualizada con reducción de stock"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 6: Programación de Despacho en Transportador
-        # ---------------------------------------------------------------------
-        paquetes_transporte = [
-            {
-                "producto_id": item["producto_id"],
-                "nombre": item["nombre"],
-                "cantidad": item["cantidad"],
-                "peso_estimado_kg": 35.0
-            } for item in items_venta_procesados
-        ]
-        req_transporte = {
-            "id_venta": id_venta,
-            "destinatario": payload.cliente.nombre,
-            "direccion_entrega": payload.cliente.direccion,
-            "telefono": payload.cliente.telefono,
-            "paquetes": paquetes_transporte
-        }
-        try:
-            res_trans = await client.post(f"{TRANSPORTADOR_URL}/ordenarTransporte", json=req_transporte)
-            if res_trans.status_code != 200:
-                raise HTTPException(status_code=res_trans.status_code, detail=f"Error en Transportador: {res_trans.text}")
-            guia_transporte = res_trans.json().get("guia")
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Microservicio Transportador inaccesible: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 6,
-            "componente": "Transportador",
-            "accion": "ordenarTransporte",
-            "numero_guia": guia_transporte["numero_guia"],
-            "vehiculo": guia_transporte["vehiculo_asignado"],
-            "fecha_entrega": guia_transporte["fecha_estimada_entrega"],
-            "resultado": "OK - Logística programada y guía emitida"
-        })
-
-    logger.info(f"[{id_proceso}] Venta orquestada con éxito total.")
-
-    return {
-        "status": "EXITOSO",
-        "mensaje": "Venta orquestada y coordinada completamente por el Middleware",
-        "id_proceso": id_proceso,
-        "resumen": {
-            "id_venta": id_venta,
-            "cliente": payload.cliente.nombre,
-            "total_pagado": venta_registrada["total"],
-            "numero_factura": factura_generada["numero_factura"],
-            "cufe": factura_generada["cufe"],
-            "numero_guia_transporte": guia_transporte["numero_guia"],
-            "transportadora": guia_transporte["transportadora"],
-            "vehiculo": guia_transporte["vehiculo_asignado"],
-            "fecha_estimada_entrega": guia_transporte["fecha_estimada_entrega"],
-            "bloques_blockchain": bloques_minados
-        },
-        "detalles_completos": {
-            "venta": venta_registrada,
-            "factura": factura_generada,
-            "guia_transporte": guia_transporte,
-            "trazabilidad_pasos": pasos_completados
-        }
-    }
+    return await orquestador.registrar_venta(payload)
 
 
-@app.post("/registrarCompra")
+@app.post(
+    "/registrarCompra",
+    response_model=OrquestarCompraResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Orquestar compra a proveedor y aumentar stock en Blockchain",
+    description="""
+    Inicia y coordina el flujo completo de reabastecimiento con proveedores:
+    
+    1. **Validación de Catálogo:** Valida que los productos existan y concilia los costos base en Inventario.
+    2. **Orden Mercantil:** Registra la orden de compra en Compras/Ventas con los términos de crédito pactados.
+    3. **Facturación Contable:** Genera comprobante fiscal electrónico y CUFE de cuenta por pagar en Contabilidad.
+    4. **Conciliación:** Vincula la factura emitida a la orden mercantil en Compras/Ventas.
+    5. **Minado en Blockchain:** Mina un nuevo bloque PoW de tipo 'ADQUISICION' en Inventario, incrementando el saldo disponible de forma inmutable.
+    """,
+    responses={
+        400: {"description": "Producto no existente en catálogo o costo inválido."},
+        502: {"description": "Falla de comunicación con los microservicios."},
+        503: {"description": "Microservicio indispensable inaccesible."}
+    },
+    tags=["Orquestación de Compras"]
+)
 async def registrar_compra(payload: RegistrarCompraRequest):
-    """
-    FLUJO ORQUESTADO DE COMPRA A PROVEEDOR:
-    El Middleware coordina la adquisición de muebles con proveedores:
-      1. Inventario: Valida el catálogo de productos y costos vigentes.
-      2. Compras/Ventas: Registra la orden de compra comercial a favor del proveedor.
-      3. Contabilidad: Emite la factura/cuenta por pagar con su correspondiente consecutivo y CUFE.
-      4. Compras/Ventas: Registra la factura en el expediente de compras (recibirFactura).
-      5. Inventario: Actualiza el inventario minando bloques de adquisición en la Blockchain.
-      6. Consolidación: Confirma la transacción de reabastecimiento.
-    """
-    id_proceso = f"ORQ-COM-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-    pasos_completados = []
-    logger.info(f"[{id_proceso}] Iniciando orquestación de compra para proveedor: {payload.proveedor.nombre}")
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        # ---------------------------------------------------------------------
-        # PASO 1: Validación contra el catálogo de Inventario
-        # ---------------------------------------------------------------------
-        try:
-            res_inv = await client.get(f"{INVENTARIO_URL}/cargarProductos")
-            if res_inv.status_code != 200:
-                raise HTTPException(status_code=502, detail="Falla al consultar el catálogo de Inventario.")
-            catalogo = {p["id"]: p for p in res_inv.json().get("productos", [])}
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Microservicio Inventario inaccesible: {str(e)}")
-
-        items_compra_procesados = []
-        for item in payload.items:
-            if item.producto_id not in catalogo:
-                raise HTTPException(status_code=400, detail=f"El producto '{item.producto_id}' no existe en el catálogo.")
-            info_prod = catalogo[item.producto_id]
-            costo_final = item.costo_unitario if item.costo_unitario is not None else info_prod["costo_unitario"]
-
-            items_compra_procesados.append({
-                "producto_id": item.producto_id,
-                "nombre": info_prod["nombre"],
-                "cantidad": item.cantidad,
-                "costo_unitario": costo_final
-            })
-
-        pasos_completados.append({
-            "paso": 1,
-            "componente": "Inventario",
-            "accion": "Verificación de catálogo y costos base",
-            "resultado": "OK - Productos validados para adquisición"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 2: Registro de la Orden de Compra en Compras/Ventas
-        # ---------------------------------------------------------------------
-        req_compra = {
-            "proveedor": payload.proveedor.model_dump(),
-            "items": items_compra_procesados,
-            "terminos_pago": payload.terminos_pago,
-            "observaciones": f"Compra coordinada por Middleware [{id_proceso}]"
-        }
-        try:
-            res_cv = await client.post(f"{COMPRAS_VENTAS_URL}/registrarCompra", json=req_compra)
-            if res_cv.status_code != 200:
-                raise HTTPException(status_code=res_cv.status_code, detail=f"Error en Compras/Ventas: {res_cv.text}")
-            compra_registrada = res_cv.json().get("compra")
-            id_compra = compra_registrada["id_compra"]
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Microservicio Compras/Ventas inaccesible: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 2,
-            "componente": "Compras/Ventas",
-            "accion": "registrarCompra",
-            "id_compra": id_compra,
-            "subtotal": compra_registrada["subtotal"],
-            "total": compra_registrada["total"],
-            "resultado": "OK - Orden de compra registrada"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 3: Emisión de Factura de Compra / Cuenta por Pagar en Contabilidad
-        # ---------------------------------------------------------------------
-        req_factura = {
-            "tipo_operacion": "COMPRA",
-            "referencia_operacion": id_compra,
-            "emisor": f"{payload.proveedor.nombre} (NIT: {payload.proveedor.nit})",
-            "receptor": "Muebles Confort S.A.S. - NIT 901.888.777-1",
-            "subtotal": compra_registrada["subtotal"],
-            "iva": compra_registrada["iva"],
-            "total": compra_registrada["total"],
-            "detalles": [
-                {
-                    "producto_id": it["producto_id"],
-                    "nombre": it["nombre"],
-                    "cantidad": it["cantidad"],
-                    "precio_unitario": it["costo_unitario"]
-                } for it in items_compra_procesados
-            ],
-            "metodo_pago": payload.terminos_pago
-        }
-        try:
-            res_cont = await client.post(f"{CONTABILIDAD_URL}/generarFactura", json=req_factura)
-            if res_cont.status_code != 200:
-                raise HTTPException(status_code=res_cont.status_code, detail=f"Error en Contabilidad: {res_cont.text}")
-            factura_generada = res_cont.json().get("factura")
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Microservicio Contabilidad inaccesible: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 3,
-            "componente": "Contabilidad",
-            "accion": "generarFactura (Compra)",
-            "numero_factura": factura_generada["numero_factura"],
-            "cufe": factura_generada["cufe"],
-            "resultado": "OK - Factura/Cuenta por pagar registrada"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 4: Vinculación de factura en Compras/Ventas
-        # ---------------------------------------------------------------------
-        req_recibir_fac = {
-            "referencia_operacion": id_compra,
-            "numero_factura": factura_generada["numero_factura"],
-            "cufe": factura_generada["cufe"],
-            "fecha_emision": factura_generada["fecha_emision"],
-            "total_facturado": factura_generada["total"]
-        }
-        try:
-            res_rf = await client.post(f"{COMPRAS_VENTAS_URL}/recibirFactura", json=req_recibir_fac)
-            if res_rf.status_code != 200:
-                logger.warning(f"Advertencia al notificar factura de compra: {res_rf.text}")
-        except Exception as e:
-            logger.warning(f"No se pudo vincular factura en Compras/Ventas: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 4,
-            "componente": "Compras/Ventas",
-            "accion": "recibirFactura",
-            "resultado": "OK - Factura vinculada a la compra"
-        })
-
-        # ---------------------------------------------------------------------
-        # PASO 5: Actualización del inventario en Blockchain (Incremento por Adquisición)
-        # ---------------------------------------------------------------------
-        bloques_minados = []
-        for item in payload.items:
-            req_act_inv = {
-                "tipo": "ADQUISICION",
-                "producto_id": item.producto_id,
-                "cantidad": item.cantidad,
-                "referencia": id_compra,
-                "motivo": f"Abastecimiento Compra {id_compra} - Factura {factura_generada['numero_factura']}"
-            }
-            try:
-                res_act = await client.post(f"{INVENTARIO_URL}/actualizarInventario", json=req_act_inv)
-                if res_act.status_code != 200:
-                    raise HTTPException(status_code=res_act.status_code, detail=f"Error en Blockchain Inventario: {res_act.text}")
-                datos_bloque = res_act.json()
-                bloques_minados.append({
-                    "producto_id": item.producto_id,
-                    "cantidad": item.cantidad,
-                    "stock_resultante": datos_bloque.get("stock_resultante"),
-                    "bloque_hash": datos_bloque.get("bloque_minado", {}).get("hash"),
-                    "bloque_index": datos_bloque.get("bloque_minado", {}).get("index")
-                })
-            except httpx.RequestError as e:
-                raise HTTPException(status_code=503, detail=f"Microservicio Inventario inaccesible durante minado: {str(e)}")
-
-        pasos_completados.append({
-            "paso": 5,
-            "componente": "Inventario",
-            "accion": "actualizarInventario (Minado de Bloques en Blockchain)",
-            "bloques": bloques_minados,
-            "resultado": "OK - Blockchain actualizada con ingreso de stock"
-        })
-
-    logger.info(f"[{id_proceso}] Compra orquestada con éxito total.")
-
-    return {
-        "status": "EXITOSO",
-        "mensaje": "Compra a proveedor orquestada y coordinada completamente por el Middleware",
-        "id_proceso": id_proceso,
-        "resumen": {
-            "id_compra": id_compra,
-            "proveedor": payload.proveedor.nombre,
-            "total_compra": compra_registrada["total"],
-            "numero_factura": factura_generada["numero_factura"],
-            "cufe": factura_generada["cufe"],
-            "terminos_pago": compra_registrada["terminos_pago"],
-            "bloques_blockchain": bloques_minados
-        },
-        "detalles_completos": {
-            "compra": compra_registrada,
-            "factura": factura_generada,
-            "trazabilidad_pasos": pasos_completados
-        }
-    }
+    return await orquestador.registrar_compra(payload)

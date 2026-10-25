@@ -152,7 +152,7 @@ class BlockchainInventario:
         return stock
 
     def obtener_productos_con_stock(self) -> List[Dict[str, Any]]:
-        """Calcula el estado actual del catálogo utilizando el ledger de blockchain"""
+        """Calcula el estado actual del catálogo utilizando el ledger inmutable de blockchain"""
         resultado = []
         for pid, prod in self.catalogo_base.items():
             stock = self.calcular_stock(pid)
@@ -169,10 +169,11 @@ class BlockchainInventario:
         return resultado
 
     def obtener_requerimientos(self) -> List[Dict[str, Any]]:
-        """Genera requerimientos de abastecimiento para compras a proveedores"""
+        """Genera requerimientos de abastecimiento para compras a proveedores basados en stock mínimo"""
         requerimientos = []
         for prod in self.obtener_productos_con_stock():
             if prod["requiere_reabastecimiento"]:
+                nivel_urgencia = "ALTA" if prod["stock_actual"] == 0 else "MEDIA"
                 deficit = (prod["stock_minimo"] * 2) - prod["stock_actual"]
                 cantidad_sugerida = max(deficit, 5)
                 requerimientos.append({
@@ -183,7 +184,7 @@ class BlockchainInventario:
                     "stock_minimo": prod["stock_minimo"],
                     "cantidad_sugerida": cantidad_sugerida,
                     "costo_estimado_unitario": prod["costo_unitario"],
-                    "urgencia": "ALTA" if prod["stock_actual"] == 0 else "MEDIA"
+                    "urgencia": nivel_urgencia
                 })
         return requerimientos
 

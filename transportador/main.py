@@ -1,85 +1,64 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-import datetime
-import random
-import uuid
+from fastapi import FastAPI, HTTPException, status
+from schemas.transportador import (
+    OrdenarTransporteRequest,
+    OrdenarTransporteResponse,
+    ListarGuiasResponse
+)
+from services import GestorTransporte
+
+tags_metadata = [
+    {
+        "name": "Logística y Envíos",
+        "description": "Programación de vehículos de transporte pesado, asignación de rutas y expedición de guías de carga."
+    }
+]
 
 app = FastAPI(
     title="Microservicio Transportador y Logística",
-    description="Gestiona la programación de despachos y generación de guías de transporte para ventas de muebles.",
-    version="1.0.0"
+    description="""
+    Microservicio logístico encargado de coordinar la flota de camiones, planificar rutas metropolitanas y emitir guías de despacho.
+    
+    ### Funciones:
+    * **Asignación Vehicular:** Asigna camiones adecuados (furgón, plataforma hidráulica) según el volumen y peso de la carga de muebles.
+    * **Generación de Guías:** Emite un identificador alfanumérico único para rastreo y control del despacho.
+    * **Cálculo de Tiempos de Entrega:** Determina fechas programadas de despacho y fechas compromiso de entrega.
+    """,
+    version="1.0.0",
+    openapi_tags=tags_metadata
 )
 
-guias_db: Dict[str, Dict[str, Any]] = {}
-
-VEHICULOS_DISPONIBLES = ["CAMION-01 (Furgón Carga Pesada)", "CAMION-02 (Plataforma Hidráulica)", "CAMION-03 (Furgón Mediano)"]
-RUTAS_LOGISTICAS = ["Ruta Norte - Bogotá y Sabana", "Ruta Sur - Soacha y Cundinamarca", "Ruta Centro - Despacho Exprés"]
+# Instancia global del servicio logístico orientado a objetos (POO)
+gestor_transporte = GestorTransporte()
 
 
-class PaqueteInfo(BaseModel):
-    producto_id: str
-    nombre: str
-    cantidad: int
-    peso_estimado_kg: Optional[float] = 30.0
-
-
-class OrdenarTransporteRequest(BaseModel):
-    id_venta: str = Field(..., description="Referencia de la venta asociada")
-    destinatario: str = Field(..., description="Nombre del cliente o persona que recibe")
-    direccion_entrega: str = Field(..., description="Dirección física de destino")
-    ciudad: Optional[str] = "Bogotá D.C."
-    telefono: Optional[str] = "N/A"
-    paquetes: List[PaqueteInfo] = Field(..., description="Lista de artículos a transportar")
-
-
-@app.post("/ordenarTransporte")
+@app.post(
+    "/ordenarTransporte",
+    response_model=OrdenarTransporteResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Programar transporte y generar guía de entrega",
+    description="Programa el envío logístico de muebles vinculados a una orden de venta, calculando el peso acumulado de la carga, asignando un camión disponible, una ruta geográfica y emitiendo la guía de entrega oficial.",
+    responses={
+        400: {"description": "Lista de paquetes vacía o datos de entrega incompletos."}
+    },
+    tags=["Logística y Envíos"]
+)
 def ordenar_transporte(payload: OrdenarTransporteRequest):
-    """
-    Método requerido por el esquema:
-    Programa la logística y genera la guía de transporte para la entrega del pedido de muebles.
-    """
-    if not payload.paquetes:
-        raise HTTPException(status_code=400, detail="Debe especificar al menos un paquete para transportar.")
-
-    codigo_guia = f"GUIA-{datetime.datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-    fecha_despacho = (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    fecha_estimada_entrega = (datetime.datetime.now() + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
-
-    peso_total = sum(p.cantidad * (p.peso_estimado_kg or 25.0) for p in payload.paquetes)
-    vehiculo = random.choice(VEHICULOS_DISPONIBLES)
-    ruta = random.choice(RUTAS_LOGISTICAS)
-
-    guia = {
-        "numero_guia": codigo_guia,
-        "id_venta": payload.id_venta,
-        "transportadora": "Logística & Carga Móvil Express de Colombia S.A.S.",
-        "destinatario": payload.destinatario,
-        "direccion_entrega": payload.direccion_entrega,
-        "ciudad": payload.ciudad,
-        "telefono": payload.telefono,
-        "vehiculo_asignado": vehiculo,
-        "ruta_asignada": ruta,
-        "peso_total_kg": round(peso_total, 2),
-        "paquetes": [p.model_dump() for p in payload.paquetes],
-        "fecha_creacion": datetime.datetime.now().isoformat(),
-        "fecha_despacho_programada": fecha_despacho,
-        "fecha_estimada_entrega": fecha_estimada_entrega,
-        "estado_envio": "DESPACHO_PROGRAMADO"
-    }
-
-    guias_db[codigo_guia] = guia
-
-    return {
-        "status": "EXITOSO",
-        "mensaje": "Transporte programado y guía generada exitosamente",
-        "guia": guia
-    }
+    try:
+        return gestor_transporte.ordenar_transporte(payload)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@app.get("/guias")
+@app.get(
+    "/guias",
+    response_model=ListarGuiasResponse,
+    summary="Listar guías de despacho y transporte",
+    description="Retorna el listado completo de todas las guías de transporte programadas en el sistema.",
+    tags=["Logística y Envíos"]
+)
 def listar_guias():
+    guias = gestor_transporte.listar_guias()
     return {
-        "total": len(guias_db),
-        "guias": list(guias_db.values())
+        "total": len(guias),
+        "guias": guias
     }
