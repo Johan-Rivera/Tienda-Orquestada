@@ -32,7 +32,7 @@ app = FastAPI(
     openapi_tags=tags_metadata
 )
 
-# Instancia global del servicio contable orientado a objetos (POO)
+# Instancia global del servicio contable
 gestor_contable = GestorContable()
 
 

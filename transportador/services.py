@@ -6,8 +6,7 @@ from schemas.transportador import OrdenarTransporteRequest
 
 class GestorTransporte:
     """
-    Clase de dominio orientada a objetos (POO) que encapsula
-    la asignación logística de vehículos, rutas y generación de guías de despacho.
+    Clase que encapsula la asignación logística de vehículos, rutas y generación de guías de despacho.
     """
 
     VEHICULOS_DISPONIBLES = [

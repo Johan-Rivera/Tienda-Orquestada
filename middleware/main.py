@@ -6,7 +6,6 @@ from schemas.middleware import (
     OrquestarCompraResponse
 )
 from orchestrator import OrquestadorMiddleware
-import os
 import socket
 
 tags_metadata = [
@@ -51,10 +50,8 @@ app = FastAPI(
     openapi_tags=tags_metadata
 )
 
-def resolver_url_servicio(var_entorno: str, docker_name: str, puerto: int) -> str:
-    """Detecta inteligentemente si está dentro de la red Docker o en host local"""
-    if os.getenv(var_entorno):
-        return os.getenv(var_entorno)
+def resolver_url_servicio(docker_name: str, puerto: int) -> str:
+    """Detecta si está dentro de la red Docker o en host local"""
     try:
         socket.gethostbyname(docker_name)
         return f"http://{docker_name}:{puerto}"
@@ -62,12 +59,12 @@ def resolver_url_servicio(var_entorno: str, docker_name: str, puerto: int) -> st
         return f"http://localhost:{puerto}"
 
 # URLs dinámicas de los microservicios
-INVENTARIO_URL = resolver_url_servicio("INVENTARIO_URL", "c-inventario", 8001)
-COMPRAS_VENTAS_URL = resolver_url_servicio("COMPRAS_VENTAS_URL", "c-compras-ventas", 8002)
-CONTABILIDAD_URL = resolver_url_servicio("CONTABILIDAD_URL", "c-contabilidad", 8003)
-TRANSPORTADOR_URL = resolver_url_servicio("TRANSPORTADOR_URL", "c-transportador", 8004)
+INVENTARIO_URL = resolver_url_servicio("inventario", 8001)
+COMPRAS_VENTAS_URL = resolver_url_servicio("compras-ventas", 8002)
+CONTABILIDAD_URL = resolver_url_servicio("contabilidad", 8003)
+TRANSPORTADOR_URL = resolver_url_servicio("transportador", 8004)
 
-# Instancia global del Orquestador orientada a objetos (POO)
+# Instancia global del Orquestador
 orquestador = OrquestadorMiddleware(
     inventario_url=INVENTARIO_URL,
     compras_ventas_url=COMPRAS_VENTAS_URL,
@@ -78,7 +75,7 @@ orquestador = OrquestadorMiddleware(
 
 @app.get(
     "/cargarProductos",
-    summary="Consultar catálogo de muebles y existencias en Blockchain",
+    summary="Consultar catálogo de muebles y existencias en Inventario",
     description="Consulta al microservicio de Inventario para computar y retornar las existencias disponibles de todos los muebles, calculadas a partir del historial inmutable de transacciones en la Blockchain.",
     tags=["Consultas de Inventario"]
 )

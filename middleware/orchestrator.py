@@ -10,8 +10,8 @@ logger = logging.getLogger("middleware-orquestador")
 
 class OrquestadorMiddleware:
     """
-    Clase de dominio orientada a objetos (POO) que coordina los flujos distribuidos
-    de venta a clientes y compra a proveedores conectando con los microservicios de dominio.
+    Clase que coordina los flujos distribuidos de venta a clientes 
+    y compra a proveedores conectando con los microservicios.
     """
 
     def __init__(self, inventario_url: str, compras_ventas_url: str, contabilidad_url: str, transportador_url: str):
@@ -55,7 +55,7 @@ class OrquestadorMiddleware:
         logger.info(f"[{id_proceso}] Iniciando orquestación de venta para cliente: {payload.cliente.nombre}")
 
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. Validación de stock en Inventario (Blockchain)
+            # 1. Validación de stock en Inventario
             res_inv = await self._solicitar(client, "GET", f"{self.inventario_url}/cargarProductos", "Inventario")
             catalogo = {p["id"]: p for p in res_inv.get("productos", [])}
 

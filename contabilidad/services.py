@@ -6,8 +6,7 @@ from schemas.contabilidad import GenerarFacturaRequest
 
 class GestorContable:
     """
-    Clase de dominio orientada a objetos (POO) que encapsula
-    la emisión de facturas electrónicas, generación de CUFE y balance contable.
+    Clase que encapsula la emisión de facturas electrónicas, generación de CUFE y balance contable.
     """
 
     def __init__(self):

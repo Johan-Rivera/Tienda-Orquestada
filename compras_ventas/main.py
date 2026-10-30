@@ -40,7 +40,7 @@ app = FastAPI(
     openapi_tags=tags_metadata
 )
 
-# Instancia global del servicio comercial orientado a objetos (POO)
+# Instancia global del servicio comercial
 gestor_compras_ventas = GestorComprasVentas()
 
 

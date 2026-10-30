@@ -27,7 +27,7 @@ app = FastAPI(
     openapi_tags=tags_metadata
 )
 
-# Instancia global del servicio logístico orientado a objetos (POO)
+# Instancia global del servicio logístico
 gestor_transporte = GestorTransporte()
 
 

@@ -33,7 +33,7 @@ app = FastAPI(
     openapi_tags=tags_metadata
 )
 
-# Instancia global del ledger blockchain orientada a objetos (POO)
+# Instancia global del ledger blockchain
 blockchain = BlockchainInventario()
 
 

@@ -6,8 +6,7 @@ from schemas.compras_ventas import RegistrarVentaRequest, RegistrarCompraRequest
 
 class GestorComprasVentas:
     """
-    Clase de dominio orientada a objetos (POO) que encapsula
-    el registro, control y consulta de operaciones de compra y venta.
+    Clase que encapsula el registro, control y consulta de operaciones de compra y venta.
     """
 
     def __init__(self):
