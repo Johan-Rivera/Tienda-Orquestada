@@ -1,5 +1,5 @@
 # 1. Ejecutar contenedor temporal para instalar las librerías
-docker run --name builder --dns 8.8.8.8 alpine:latest sh -c "apk add --no-cache python3 py3-pip && pip install --no-cache-dir --break-system-packages fastapi uvicorn pydantic httpx
+docker run --name builder --dns 8.8.8.8 alpine:latest sh -c "apk add --no-cache python3 py3-pip && pip install --no-cache-dir --break-system-packages fastapi uvicorn pydantic httpx"
 
 # 2. Generar la imagen local con docker commit
 docker commit builder alpinito
@@ -11,16 +11,26 @@ docker rm builder
 docker network create red-muebles
 
 # 1. Inventario con Blockchain (Puerto 8001)
-docker run --name inventario --network red-muebles -p 8001:8001 -v "${PWD}/inventario:/app" -w /app alpinito uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+docker run -dit --name inventario --network red-muebles -p 8001:8001 -v "${PWD}/inventario:/app" alpinito sh
+docker exec -it inventario sh
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 
 # 2. Compras y Ventas (Puerto 8002)
-docker run --name compras-ventas --network red-muebles -p 8002:8002 -v "${PWD}/compras_ventas:/app" -w /app alpinito uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+docker run -dit --name compras-ventas --network red-muebles -p 8002:8002 -v "${PWD}/compras_ventas:/app" alpinito sh
+docker exec -it compras-ventas sh
+uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 
 # 3. Contabilidad y Facturación (Puerto 8003)
-docker run --name contabilidad --network red-muebles -p 8003:8003 -v "${PWD}/contabilidad:/app" -w /app alpinito uvicorn main:app --host 0.0.0.0 --port 8003 --reload
+docker run -dit --name contabilidad --network red-muebles -p 8003:8003 -v "${PWD}/contabilidad:/app" alpinito sh
+docker exec -it contabilidad sh
+uvicorn main:app --host 0.0.0.0 --port 8003 --reload 
 
 # 4. Transportador y Logística (Puerto 8004)
-docker run --name transportador --network red-muebles -p 8004:8004 -v "${PWD}/transportador:/app" -w /app alpinito uvicorn main:app --host 0.0.0.0 --port 8004 --reload
+docker run -dit --name transportador --network red-muebles -p 8004:8004 -v "${PWD}/transportador:/app" alpinito sh
+docker exec -it transportador sh
+uvicorn main:app --host 0.0.0.0 --port 8004 --reload
 
 # 5. Middleware Orquestador Central (Puerto 8000)
-docker run --name middleware --network red-muebles -p 8000:8000 -v "${PWD}/middleware:/app" -w /app alpinito uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+docker run -dit --name middleware --network red-muebles -p 8000:8000 -v "${PWD}/middleware:/app" alpinito sh
+docker exec -it middleware sh
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
